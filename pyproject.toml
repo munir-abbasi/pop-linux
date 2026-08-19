@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pop-linux"
+version = "0.1.0"
+description = "Native Publish or Perish CLI for Linux with multi-source academic API harvesting and Playwright CAPTCHA solver."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "SyntaxHouse / Pop-Linux Team", email = "info@syntaxhouse.com"}
+]
+dependencies = [
+    "typer>=0.9.0,<1.0",
+    "rich>=13.0.0,<15.0",
+    "pydantic>=2.0.0,<3.0",
+    "httpx>=0.24.0,<1.0",
+    "beautifulsoup4>=4.12.0,<5.0",
+    "playwright>=1.35.0,<2.0",
+    "tomli-w>=1.0.0,<2.0"
+]
+
+[project.scripts]
+pop-linux = "pop_linux.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 150
+
+[tool.ruff.lint]
+ignore = ["BLE001", "S110", "B904", "E501", "B008"]
+select = ["E", "F", "W", "B"]
