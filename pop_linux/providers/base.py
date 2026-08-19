@@ -17,9 +17,12 @@ class BaseProvider(ABC):
     def get_headers(self) -> dict:
         """Constructs polite HTTP headers including User-Agent with contact email."""
         cfg = load_config()
-        email = cfg.get("polite_email", "pop-linux@syntaxhouse.com")
+        email = (cfg.get("polite_email") or "").strip()
+        ua = "pop-linux/0.1.0"
+        if email:
+            ua += f" (mailto:{email})"
         return {
-            "User-Agent": f"pop-linux/0.1.0 (mailto:{email})"
+            "User-Agent": ua
         }
 
     async def _get_with_retry(

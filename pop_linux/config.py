@@ -18,7 +18,7 @@ DEFAULT_USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML,
 DEFAULT_CONFIG: dict[str, Any] = {
     "default_provider": "openalex",
     "default_limit": 50,
-    "polite_email": "pop-linux@syntaxhouse.com",
+    "polite_email": "",
     "google_scholar_timeout": 30,
     "user_agent": DEFAULT_USER_AGENT,
     "cookies_file": str(COOKIES_FILE),

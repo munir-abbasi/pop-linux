@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Native Publish or Perish CLI for Linux with multi-source academic API harvesting and Playwright CAPTCHA solver."
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
+license = {file = "LICENSE"}
 authors = [
     {name = "SyntaxHouse / Pop-Linux Team", email = "info@syntaxhouse.com"}
 ]

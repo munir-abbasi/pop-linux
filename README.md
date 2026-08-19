@@ -85,6 +85,17 @@ Filter queries by `--author`, `--journal`, `--issn`, `--year-from`, `--year-to`,
 
 ---
 
+## 🛠️ Requirements
+
+- **Linux** (any modern distro). The Google Scholar CAPTCHA bridge additionally
+  requires a graphical session (it opens a real browser window only when blocked).
+- **Python 3.11 or newer** (`python3 --version`).
+- **pip / venv** (standard on Debian/Ubuntu via the `python3-venv` and
+  `python3-pip` packages).
+- **~20 MB free disk space** plus the optional Playwright Chromium download
+  (~150 MB) if you want automated Google Scholar CAPTCHA solving.
+- No database server needed — search history is stored in a local SQLite file.
+
 ## 🛠️ Installation
 
 ```bash
@@ -96,9 +107,70 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -e .
 
-# Install Playwright Chromium for Google Scholar CAPTCHA solving
+# (Optional) Install Playwright Chromium for Google Scholar CAPTCHA solving
 playwright install chromium
 ```
+
+> **💡 Tip:** `pip install -e .` is the editable/development install. For a
+> plain (non-editable) install, run `pip install .` instead — the `pop-linux`
+> command is registered either way.
+
+### Verify the install
+
+```bash
+pop-linux --help
+pop-linux providers
+```
+
+## 🔑 API Keys & Provider Registration
+
+`pop-linux` works out of the box **with no API keys**. Adding free API keys for
+OpenAlex, Semantic Scholar, and NCBI/PubMed lifts their rate limits and is
+recommended for anything beyond occasional search runs. Keys are stored in
+`~/.config/pop_linux/config.toml` (auto-created with owner-only permissions) and
+are **masked in `pop-linux config --show` output** and never logged.
+
+Set a key with:
+
+```bash
+pop-linux config --set api_keys.semanticscholar --value "YOUR_KEY_HERE"
+pop-linux config --set api_keys.ncbi --value "YOUR_KEY_HERE"
+```
+
+### Configure your contact email (recommended)
+
+Set `polite_email` to **your own** email address. It is sent in the
+`User-Agent` header to the API providers (OpenAlex, Semantic Scholar, CrossRef,
+NCBI) as polite-pool identification, so providers can reach you about rate
+limits or API changes:
+
+```bash
+pop-linux config --set polite_email --value "you@example.com"
+```
+
+`polite_email` ships **unset** (empty) by default — this has no functional
+impact on search results. However, popular usage of the APIs expects a contact
+email, and failing to provide one may subject you to stricter throttling by
+some providers. You must configure it yourself before heavy use.
+
+> **🔒 Security note:** `config.toml` is written with `0600` permissions and the
+> config directory with `0700`. Never commit your `config.toml` or share your
+> keys — `pop-linux` asks you to supply keys only via the local config file.
+
+### Provider-by-provider registration steps
+
+| Provider | Required? | How to register | What a key gets you |
+|---|---|---|---|
+| **OpenAlex** | Keyless works for casual use | Create a free account at [openalex.org](https://openalex.org) and copy your key from [openalex.org/settings/api](https://openalex.org/settings/api) | 10× the keyless daily budget (keyless budget is fine for demos/testing only) |
+| **Semantic Scholar** | No | Request a free key via the [Semantic Scholar API product page](https://www.semanticscholar.org/product/api) ("Request an API key" form) — the key is sent to you by email | 1 request/second dedicated rate (keyless shares a global throttled pool) |
+| **NCBI / PubMed** | No | Create an [NCBI account](https://www.ncbi.nlm.nih.gov/account/), open **Account settings → API Key Management**, click **Create an API Key**, copy it | E-utilities rate limit raised from 3 to 10 requests/second |
+| **CrossRef** | No | No key exists — just use it | — (polite `mailto`/User-Agent identification) |
+| **Google Scholar** | No | No API key exists — the scraper persists a session cookie file (`~/.config/pop_linux/cookies.json`) after you solve a CAPTCHA once | Persistent session that avoids re-solving CAPTCHAs |
+
+> **⚠️ OpenAlex note (Feb 2026 change):** OpenAlex retired its "polite pool"
+> (`mailto=` requests are now ignored) and moved to **free API keys** required
+> for real-scale use. This release queries OpenAlex keyless (suited to casual /
+> test use); configuring an OpenAlex API key in `pop-linux` is on the roadmap.
 
 ---
 
@@ -234,10 +306,10 @@ When the user asks to find papers or check citation metrics:
 
 | Provider Key | Search Type | API Key Required? | Description & Capabilities |
 |---|---|---|---|
-| `openalex` | REST API (Default) | No | Fast, 250M+ items, structured inverted-index abstract reconstruction |
-| `semanticscholar` | REST API | Optional | Semantic Scholar Graph API with citations, venues, & abstracts |
+| `openalex` | REST API (Default) | Keyless OK for casual use; free key lifts 10× daily budget | Fast, 250M+ items, structured inverted-index abstract reconstruction. See the API-keys note above. |
+| `semanticscholar` | REST API | Optional | Semantic Scholar Graph API with citations, venues, & abstracts; dedicated 1 RPS with a key |
 | `crossref` | REST API | No | DOI lookups, publisher metadata, citation count sorting |
-| `pubmed` | REST API | Optional | NCBI Entrez biomedical & life sciences literature |
+| `pubmed` | REST API | Optional | NCBI Entrez biomedical & life sciences literature; 3→10 RPS with a key |
 | `google_scholar` | Scraper / Playwright | No | Native HTML parser with Playwright cookie bridge for CAPTCHAs |
 | `all` | Multi-Source API | No | Concurrent multi-provider search with automated DOI & title deduplication |
 
@@ -253,4 +325,11 @@ When the user asks to find papers or check citation metrics:
 
 ## 📄 License
 
-MIT License. Developed for native Linux academic research workflows.
+This project is licensed under the **PolyForm Noncommercial License 1.0.0**.
+
+- **Allowed**: any *noncommercial* use — personal research, study, hobby,
+  educational institutions, charities, public health, and government use.
+- **Requires permission**: *commercial* use. If you want to use `pop-linux` for
+  any commercial purpose, contact the author for a commercial license.
+
+See [LICENSE](LICENSE) for the full terms.
