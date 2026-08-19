@@ -10,3 +10,6 @@ venv/
 dist/
 build/
 build_wheels/
+AGENTS.md
+design_specification.md
+implementation_plan.md
