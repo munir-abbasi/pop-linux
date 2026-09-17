@@ -14,15 +14,30 @@ from rich.table import Table
 
 from pop_linux import __version__
 from pop_linux.config import CONFIG_FILE, load_config, update_config_value
+from pop_linux.execution import execute_request, redact_secrets as _redact_secrets
+from pop_linux.execution_models import (
+    EXECUTION_SCHEMA,
+    ExecutionEnvelope,
+    ExecutionMessage,
+    PersistenceReport,
+    SearchFilters,
+    SearchRequest,
+)
 from pop_linux.models import Metrics, Paper, QueryResult
 from pop_linux.providers import (
     get_provider,
 )
+from pop_linux.providers.capabilities import build_capabilities_document
 from pop_linux.providers.base import BaseProvider
 from pop_linux.providers.google_scholar import GoogleScholarProvider
 from pop_linux.utils.deduplicator import deduplicate_papers
 from pop_linux.utils.exporter import export_data
-from pop_linux.utils.history import compute_snapshot_diff, list_snapshots, save_snapshot
+from pop_linux.utils.history import (
+    compute_snapshot_diff,
+    get_execution,
+    list_snapshots,
+    save_snapshot,
+)
 from pop_linux.utils.metrics import calculate_metrics
 
 app = typer.Typer(
@@ -68,9 +83,21 @@ def version_callback(value: bool):
 def main(
     version: bool | None = typer.Option(
         None, "--version", "-v", help="Show pop-linux version and exit.", callback=version_callback, is_eager=True
-    )
+    ),
+    machine: bool = typer.Option(
+        False, "--machine", help="Machine execution profile: one versioned JSON envelope on stdout, "
+        "non-interactive, no implicit history persistence."
+    ),
 ):
-    pass
+    """Global execution-profile options."""
+    main.machine_mode = machine
+
+
+main.machine_mode = False
+
+
+def _machine_requested() -> bool:
+    return bool(getattr(main, "machine_mode", False))
 
 
 def render_metrics_panel(metrics: Metrics):
@@ -117,6 +144,151 @@ def render_papers_table(result: QueryResult):
         )
 
     console.print(table)
+
+
+def _resolve_search_options(
+    provider: str | None,
+    limit: int | None,
+    author: str | None,
+    journal: str | None,
+    issn: str | None,
+    year_from: int | None,
+    year_to: int | None,
+    min_citations: int | None,
+    non_interactive: bool,
+    save_history: bool | None,
+    no_history: bool,
+) -> tuple[str, int, SearchFilters, str, str]:
+    """Applies config defaults and machine-profile policies to raw CLI options.
+
+    Returns (provider_key, limit, filters, interaction_policy, persistence_policy).
+    Raises typer.Exit on invalid input.
+    """
+    cfg = load_config()
+    selected_provider = (provider or cfg.get("default_provider", "openalex")).lower()
+    selected_limit = limit or cfg.get("default_limit", 50)
+    if isinstance(selected_limit, bool) or not isinstance(selected_limit, int) or selected_limit < 1:
+        selected_limit = 50
+
+    if year_from is not None and year_to is not None and year_from > year_to:
+        if _machine_requested():
+            _emit_machine_error("INVALID_REQUEST", "--year-from must be less than or equal to --year-to")
+        console.print("[bold red]Error:[/bold red] --year-from must be less than or equal to --year-to.")
+        raise typer.Exit(code=1)
+
+    filters = SearchFilters(
+        author=author,
+        journal=journal,
+        issn=issn,
+        year_from=year_from,
+        year_to=year_to,
+        min_citations=min_citations,
+    )
+
+    interaction_policy = "never" if (machine_requested := _machine_requested() or non_interactive) else "allow"
+
+    # Persistence policy: machine defaults off; explicit flags override in both profiles.
+    if save_history:
+        persistence_policy = "explicit"
+    elif no_history:
+        persistence_policy = "off"
+    else:
+        persistence_policy = "off" if machine_requested else "auto"
+
+    return selected_provider, selected_limit, filters, interaction_policy, persistence_policy
+
+
+def _emit_machine_envelope(envelope: ExecutionEnvelope) -> None:
+    """Writes exactly one versioned JSON envelope to stdout."""
+    console.file = None  # ensure no Rich state bleeds into the machine channel
+    payload = envelope.model_dump_json(indent=2)
+    typer.echo(payload)
+
+
+def _emit_machine_error(code: str, message: str) -> None:
+    """Emits a minimal fatal-error envelope on stdout and exits nonzero.
+
+    Used only for failures that prevent a full execution envelope from being
+    constructed (e.g. request validation before execution starts).
+    """
+    fatal = {
+        "schema": EXECUTION_SCHEMA,
+        "app_version": __version__,
+        "status": "error",
+        "request": None,
+        "errors": [{"code": code, "message": _redact_secrets(message), "provider": None, "retryable": None, "metadata": None}],
+    }
+    typer.echo(json.dumps(fatal, indent=2))
+    raise typer.Exit(code=1)
+
+
+def _machine_persistence_report(envelope: ExecutionEnvelope, export: str | None, save_history: bool | None) -> ExecutionEnvelope:
+    """Applies explicitly requested side effects in machine mode, reporting outcomes."""
+    persistence = PersistenceReport(history_policy=envelope.request.persistence_policy)
+
+    if save_history and envelope.status in ("success", "partial"):
+        try:
+            snapshot_id = save_snapshot(envelope_to_query_result(envelope))
+            persistence.snapshot_written = True
+            persistence.snapshot_id = snapshot_id
+        except Exception as exc:  # noqa: BLE001 - side-effect failure must not mask retrieval result
+            persistence.errors.append(
+                ExecutionMessage(code="HISTORY_WRITE_FAILED", message=_redact_secrets(str(exc)))
+            )
+
+    if export and envelope.status in ("success", "partial", "empty"):
+        ext = Path(export).suffix.strip(".")
+        fmt = ext if ext in ["json", "csv", "bib", "ris"] else "json"
+        try:
+            export_data(envelope_to_query_result(envelope), fmt, output_path=export)
+            persistence.exported.append({"format": fmt, "path": str(export)})
+        except Exception as exc:  # noqa: BLE001 - side-effect failure must not mask retrieval result
+            persistence.errors.append(
+                ExecutionMessage(code="EXPORT_FAILED", message=_redact_secrets(str(exc)))
+            )
+
+    envelope.persistence = persistence
+    return envelope
+
+
+def envelope_to_query_result(envelope: ExecutionEnvelope) -> QueryResult:
+    """Projects an ExecutionEnvelope onto the legacy QueryResult shape.
+
+    Used for history snapshots and exports so both profiles share one data path.
+    The projection carries query/provider/papers/metrics/timing but not the
+    provider reports (those are envelope-level concepts).
+    """
+    provider_label = "all (deduplicated)" if len(envelope.request.providers) > 1 else envelope.request.providers[0]
+    if envelope.request.profile_id:
+        provider_label = "google_scholar_profile"
+    return QueryResult(
+        query=envelope.request.query,
+        provider=provider_label,
+        total_found=envelope.counts.merged,
+        papers=envelope.papers,
+        metrics=envelope.metrics,
+        search_time_seconds=envelope.elapsed_seconds,
+    )
+
+
+def _run_machine_search(
+    request: SearchRequest,
+    export: str | None,
+    save_history: bool | None,
+) -> None:
+    """Executes one machine-profile search and emits the envelope."""
+    try:
+        envelope = execute_request(request)
+    except ValueError as exc:
+        _emit_machine_error("INVALID_REQUEST", str(exc))
+        return  # unreachable; keeps type checkers happy
+
+    envelope = _machine_persistence_report(envelope, export, save_history)
+
+    _emit_machine_envelope(envelope)
+    if envelope.status == "error":
+        raise typer.Exit(code=1)
+    # success/partial/empty exit 0
 
 
 async def search_all_providers(query: str, limit: int, **kwargs) -> QueryResult:
@@ -183,23 +355,52 @@ def search_cmd(
     year_to: int | None = typer.Option(None, "--year-to", help="Publication year ending range."),
     min_citations: int | None = typer.Option(None, "--min-citations", help="Minimum citation threshold before metric computation."),
     show_h_core: bool = typer.Option(False, "--show-h-core", help="Display only the h-core subset of papers."),
+    non_interactive: bool = typer.Option(False, "--non-interactive", help="Human-profile headless execution: no interactive browser handling."),
+    save_history: bool | None = typer.Option(None, "--save-history", help="Force a history snapshot for this search (overrides profile default)."),
+    no_history: bool = typer.Option(False, "--no-history", help="Suppress the history snapshot for this search (overrides profile default)."),
     profile: str | None = typer.Option(None, "--profile", help="Harvest directly from a Google Scholar user profile ID.")
 ):
     """Harvest papers across academic providers and compute bibliometrics."""
-    cfg = load_config()
-    selected_provider = (provider or cfg.get("default_provider", "openalex")).lower()
-    selected_limit = limit or cfg.get("default_limit", 50)
-    if isinstance(selected_limit, bool) or not isinstance(selected_limit, int) or selected_limit < 1:
-        selected_limit = 50
+    selected_provider, selected_limit, filters, interaction_policy, persistence_policy = _resolve_search_options(
+        provider, limit, author, journal, issn, year_from, year_to, min_citations,
+        non_interactive, save_history, no_history,
+    )
 
     if not query.strip() and not profile:
+        if _machine_requested():
+            _emit_machine_error("INVALID_REQUEST", "A search query is required unless --profile is provided.")
         console.print("[bold red]Error:[/bold red] A search query is required unless --profile is provided.")
         raise typer.Exit(code=1)
 
-    if year_from is not None and year_to is not None and year_from > year_to:
-        console.print("[bold red]Error:[/bold red] --year-from must be less than or equal to --year-to.")
-        raise typer.Exit(code=1)
+    request = SearchRequest(
+        query=query,
+        profile_id=profile,
+        providers=[selected_provider],
+        limit=selected_limit,
+        filters=filters,
+        interaction_policy=interaction_policy,  # type: ignore[arg-type]
+        persistence_policy=persistence_policy,  # type: ignore[arg-type]
+    )
 
+    if _machine_requested():
+        if profile:
+            # Machine profile is strictly non-interactive; profile harvesting
+            # requires the Scholar HTML path and may open Chromium.
+            _emit_machine_error(
+                "INTERACTION_FORBIDDEN",
+                "profile harvesting requires interactive Google Scholar access; "
+                "machine mode forbids browser interaction",
+            )
+        if "google_scholar" in request.providers:
+            _emit_machine_error(
+                "INTERACTION_FORBIDDEN",
+                "google_scholar may require interactive browser handling; "
+                "machine mode forbids browser interaction",
+            )
+        _run_machine_search(request, export, save_history)
+        return
+
+    # ------------------------- human profile -------------------------
     if profile:
         console.print(f"[dim]Harvesting Google Scholar profile: [bold cyan]{safe_text(profile)}[/bold cyan]...[/dim]")
         try:
@@ -208,9 +409,9 @@ def search_cmd(
                 g_provider.search_profile(
                     user_id=profile,
                     limit=selected_limit,
-                    year_from=year_from,
-                    year_to=year_to,
-                    min_citations=min_citations
+                    year_from=filters.year_from,
+                    year_to=filters.year_to,
+                    min_citations=filters.min_citations
                 )
             )
         except httpx.HTTPStatusError as e:
@@ -237,12 +438,12 @@ def search_cmd(
                         search_all_providers(
                             query=query,
                             limit=selected_limit,
-                            author=author,
-                            journal=journal,
-                            issn=issn,
-                            year_from=year_from,
-                            year_to=year_to,
-                            min_citations=min_citations
+                            author=filters.author,
+                            journal=filters.journal,
+                            issn=filters.issn,
+                            year_from=filters.year_from,
+                            year_to=filters.year_to,
+                            min_citations=filters.min_citations
                         )
                     )
                 else:
@@ -256,12 +457,12 @@ def search_cmd(
                         prov_instance.search(
                             query=query,
                             limit=selected_limit,
-                            author=author,
-                            journal=journal,
-                            issn=issn,
-                            year_from=year_from,
-                            year_to=year_to,
-                            min_citations=min_citations
+                            author=filters.author,
+                            journal=filters.journal,
+                            issn=filters.issn,
+                            year_from=filters.year_from,
+                            year_to=filters.year_to,
+                            min_citations=filters.min_citations
                         )
                     )
             except httpx.HTTPStatusError as e:
@@ -278,9 +479,17 @@ def search_cmd(
         console.print("[yellow]No papers found matching the query.[/yellow]")
         return
 
-    # Auto-save snapshot to SQLite history
-    snapshot_id = save_snapshot(result)
-    console.print(f"[dim]Saved search snapshot #[bold cyan]{snapshot_id}[/bold cyan] to history.[/dim]")
+    # Auto-save snapshot to SQLite history (human default; explicit overrides honored)
+    if persistence_policy != "off":
+        try:
+            snapshot_id = save_snapshot(result)
+        except Exception as exc:  # noqa: BLE001 - side-effect failure must not mask retrieval result
+            console.print(f"[yellow]Warning:[/yellow] could not save search history: {_mask_secret(str(exc))}")
+            console.print("[dim]Search results were retrieved successfully; only the history write failed.[/dim]")
+        else:
+            console.print(f"[dim]Saved search snapshot #[bold cyan]{snapshot_id}[/bold cyan] to history.[/dim]")
+    elif no_history:
+        console.print("[dim]History write suppressed (--no-history).[/dim]")
 
     if show_h_core and result.metrics and result.metrics.h_index > 0:
         sorted_h_papers = sorted(result.papers, key=lambda p: p.citations, reverse=True)[:result.metrics.h_index]
@@ -352,18 +561,71 @@ def config_cmd(
 @app.command("providers")
 def providers_cmd():
     """Lists supported academic search providers."""
+    if _machine_requested():
+        _emit_machine_capabilities()
+        return
     table = Table(title="Supported Academic Search Providers", show_header=True, header_style="bold green")
     table.add_column("Provider Key", style="bold cyan")
     table.add_column("Type", style="yellow")
     table.add_column("Description", style="white")
 
-    table.add_row("openalex", "REST API (Default)", "Fast, structured, 250M+ scholarly works metadata (No API key needed)")
-    table.add_row("semanticscholar", "REST API", "Semantic Scholar Graph API with citations & abstracts")
-    table.add_row("crossref", "REST API", "Publisher metadata, DOI lookups, and citation counts")
-    table.add_row("pubmed", "REST API", "NCBI Entrez biomedical and life sciences literature")
-    table.add_row("google_scholar", "HTML + Playwright", "Scrapes Google Scholar with native Chromium CAPTCHA solver")
+    from pop_linux.providers.capabilities import CAPABILITIES
+
+    for key in CAPABILITIES:
+        caps = CAPABILITIES[key]
+        rtype = "REST API" if caps.retrieval_type == "rest" else "HTML + Playwright"
+        default_note = " (Default)" if key == "openalex" else ""
+        table.add_row(key, rtype + default_note, caps.description)
 
     console.print(table)
+
+
+def _emit_machine_capabilities() -> None:
+    """Emits the capabilities/readiness document as machine JSON on stdout."""
+    doc = build_capabilities_document(load_config())
+    typer.echo(doc.model_dump_json(indent=2))
+
+
+@app.command("capabilities")
+def capabilities_cmd():
+    """Discover provider capabilities and local readiness (no network calls)."""
+    if _machine_requested():
+        _emit_machine_capabilities()
+        return
+
+    doc = build_capabilities_document(load_config())
+
+    table = Table(title="Provider Capabilities", show_header=True, header_style="bold green")
+    table.add_column("Provider", style="bold cyan")
+    table.add_column("Type", style="yellow")
+    table.add_column("In `all`", justify="center")
+    table.add_column("Filters (mode)", max_width=40, overflow="fold")
+    table.add_column("Cites", justify="center")
+    table.add_column("Profile", justify="center")
+    table.add_column("Readiness", max_width=30, overflow="fold")
+
+    for key, caps in doc.providers.items():
+        short = {"post_filter": "post", "query_hint": "hint", "native": "native", "unsupported": "unsupported"}
+        modes = ", ".join(f"{f}:{short[m]}" for f, m in sorted(caps.filter_modes.items()))
+        ready = doc.provider_readiness.get(key)
+        ready_note = "; ".join(ready.notes) if ready and ready.notes else "ready"
+        table.add_row(
+            key,
+            caps.retrieval_type,
+            "yes" if caps.included_in_all else "no",
+            modes,
+            "yes" if caps.citation_counts_available else "no",
+            "yes" if caps.profile_search else "no",
+            safe_text(ready_note),
+        )
+    console.print(table)
+
+    env = doc.environment
+    console.print(
+        f"[dim]Environment: playwright={'available' if env.playwright_importable else 'not installed'}; "
+        f"chromium={'detected' if env.chromium_detected else ('not detected' if env.chromium_detected is False else 'unknown')}; "
+        f"history dir writable={'yes' if doc.paths.history_dir_writable else 'NO'}[/dim]"
+    )
 
 
 @app.command("merge")
@@ -414,6 +676,113 @@ def merge_cmd(
             raise typer.Exit(code=1)
 
 
+@app.command("rerun")
+def rerun_cmd(
+    snapshot_id: int = typer.Argument(..., help="Snapshot ID to re-execute (must be a persisted v2 execution)."),
+    export: str | None = typer.Option(None, "--export", "-e", help="Output filepath to export rerun results (.bib, .csv, .json, .ris)."),
+):
+    """Re-execute a persisted search by reconstructing its resolved request."""
+    if _machine_requested():
+        _run_machine_rerun(snapshot_id, export)
+        return
+
+    try:
+        envelope, lineage_id = _execute_rerun(snapshot_id)
+    except ValueError as err:
+        console.print(f"[bold red]Error:[/bold red] {safe_text(str(err))}")
+        raise typer.Exit(code=1)
+
+    console.print(
+        f"[dim]Re-executed snapshot #[bold cyan]{snapshot_id}[/bold cyan] "
+        f"as #[bold cyan]{lineage_id}[/bold cyan] "
+        f"(status: {envelope.status}, {envelope.counts.merged} papers).[/dim]"
+    )
+
+    # Reproducibility metadata: original vs current execution conditions
+    original = get_execution(snapshot_id)
+    if original:
+        if original.app_version != envelope.app_version:
+            console.print(f"[yellow]Note: original ran on app {original.app_version}; this run: {envelope.app_version}.[/yellow]")
+
+    result = envelope_to_query_result(envelope)
+    render_papers_table(result)
+    if result.metrics:
+        render_metrics_panel(result.metrics)
+
+    if export:
+        ext = Path(export).suffix.strip(".")
+        fmt = ext if ext in ["json", "csv", "bib", "ris"] else "json"
+        try:
+            export_data(result, fmt, output_path=export)
+            console.print(f"[bold green]Rerun results successfully exported to:[/bold green] {safe_text(export)}")
+        except Exception as err:
+            console.print(f"[bold red]Export failed:[/bold red] {safe_text(str(err))}")
+            raise typer.Exit(code=1)
+
+
+def _execute_rerun(snapshot_id: int) -> tuple[ExecutionEnvelope, int]:
+    """Reconstructs the persisted request, re-executes it, records lineage.
+
+    Rerun IS a persistence action: the new execution is saved with
+    parent_snapshot_id pointing at the original, in both profiles.
+    """
+    original = get_execution(snapshot_id)
+    if original is None:
+        from pop_linux.utils.history import get_snapshot
+
+        if get_snapshot(snapshot_id) is not None:
+            raise ValueError(
+                f"snapshot #{snapshot_id} predates execution persistence and cannot be reconstructed"
+            )
+        raise ValueError(f"snapshot #{snapshot_id} does not exist")
+
+    # Re-execute the ORIGINAL resolved request under current credentials and
+    # provider implementation. Capability changes since the original run
+    # appear in the new provider reports, not hidden. Module-level reference
+    # so the dependency is patchable in tests.
+    import copy as _copy
+
+    fresh_request = _copy.deepcopy(original.request)
+    fresh_request.persistence_policy = "explicit"
+    new_envelope = execute_request(fresh_request)
+
+    from pop_linux.utils.history import save_execution
+
+    lineage_id = save_execution(new_envelope, parent_snapshot_id=snapshot_id)
+    return new_envelope, lineage_id
+
+
+def _run_machine_rerun(snapshot_id: int, export: str | None) -> None:
+    """Machine-profile rerun: one envelope on stdout, lineage persisted."""
+    try:
+        envelope, lineage_id = _execute_rerun(snapshot_id)
+    except ValueError as err:
+        _emit_machine_error("RERUN_UNAVAILABLE", str(err))
+        return
+
+    # Report lineage inside the envelope's persistence section
+    persistence = envelope.persistence
+    persistence.snapshot_written = True
+    persistence.snapshot_id = lineage_id
+    persistence.history_policy = "explicit"
+    envelope.persistence = persistence
+
+    if export and envelope.status in ("success", "partial", "empty"):
+        ext = Path(export).suffix.strip(".")
+        fmt = ext if ext in ["json", "csv", "bib", "ris"] else "json"
+        try:
+            export_data(envelope_to_query_result(envelope), fmt, output_path=export)
+            envelope.persistence.exported.append({"format": fmt, "path": str(export)})
+        except Exception as exc:  # noqa: BLE001 - side-effect failure must not mask result
+            envelope.persistence.errors.append(
+                ExecutionMessage(code="EXPORT_FAILED", message=_redact_secrets(str(exc)))
+            )
+
+    _emit_machine_envelope(envelope)
+    if envelope.status == "error":
+        raise typer.Exit(code=1)
+
+
 @app.command("history")
 def history_cmd(
     limit: int = typer.Option(20, "--limit", "-l", help="Number of past search snapshots to list.")
@@ -451,6 +820,15 @@ def diff_cmd(
     snap2: int = typer.Argument(..., help="Target comparison snapshot ID.")
 ):
     """Compare citation growth and metric trajectory between two search snapshots."""
+    if _machine_requested():
+        try:
+            diff_data = compute_snapshot_diff(snap1, snap2)
+        except ValueError as err:
+            _emit_machine_error("DIFF_UNAVAILABLE", str(err))
+            return
+        typer.echo(json.dumps(diff_data, indent=2))
+        return
+
     try:
         diff_data = compute_snapshot_diff(snap1, snap2)
     except ValueError as err:
@@ -499,6 +877,13 @@ def diff_cmd(
         console.print(f"\n[bold green]Newly Discovered Papers ({len(diff_data['new_papers'])}):[/bold green]")
         for np_title in diff_data["new_papers"]:
             console.print(f" • [white]{safe_text(np_title)}[/white]")
+
+    # Ambiguous identity matches (shared identity service could not decide)
+    if diff_data.get("ambiguous_matches"):
+        console.print(f"\n[bold yellow]Ambiguous Identity Matches ({len(diff_data['ambiguous_matches'])}):[/bold yellow]")
+        for amb in diff_data["ambiguous_matches"]:
+            baselines = ", ".join(safe_text(t) for t in amb["matched_baselines"])
+            console.print(f" • [white]{safe_text(amb['title'])}[/white] [dim](matched baselines: {baselines})[/dim]")
 
 
 if __name__ == "__main__":

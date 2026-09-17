@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 from typer.testing import CliRunner
 from pop_linux.cli import app
@@ -50,7 +51,44 @@ def test_cli_search_mock(monkeypatch):
 
     monkeypatch.setattr("pop_linux.cli.get_provider", lambda name: mock_provider_inst)
 
-    res = runner.invoke(app, ["search", "cli test", "--provider", "openalex"])
+    # Guard against accidentally writing the real user history DB:
+    # the history path must be redirected, and any write attempt that still
+    # reaches the real location must fail loudly instead of passing silently.
+    real_history_file = "pop_linux.utils.history.HISTORY_DB_FILE"
+    monkeypatch.setattr(real_history_file, Path("/nonexistent-pop-linux-test-guard/history.sqlite3"))
+
+    res = runner.invoke(app, ["search", "cli test", "--provider", "openalex", "--no-history"])
     assert res.exit_code == 0
     assert "CLI Test Paper" in res.stdout
     assert "Harzing Bibliometric Summary" in res.stdout
+
+
+def test_cli_history_write_failure_does_not_mask_retrieval(monkeypatch, capsys):
+    """Human path: a history-write failure surfaces as a warning; search still succeeds."""
+    papers = [
+        Paper(
+            title="Persist Fail Paper",
+            authors=[Author(name="T")],
+            year=2024,
+            citations=3,
+            source_provider="openalex",
+        )
+    ]
+    mock_result = QueryResult(
+        query="persist fail",
+        provider="openalex",
+        total_found=1,
+        papers=papers,
+        metrics=Metrics(total_papers=1, total_citations=3, h_index=1, g_index=1),
+    )
+    mock_provider_inst = MagicMock()
+    mock_provider_inst.search = AsyncMock(return_value=mock_result)
+    monkeypatch.setattr("pop_linux.cli.get_provider", lambda name: mock_provider_inst)
+    monkeypatch.setattr("pop_linux.cli.save_snapshot", MagicMock(side_effect=OSError("disk full")))
+
+    res = runner.invoke(app, ["search", "persist fail", "--provider", "openalex"])
+
+    assert res.exit_code == 0  # retrieval succeeded; only the side effect failed
+    assert "Persist Fail Paper" in res.stdout
+    assert "could not save search history" in res.stdout
+    assert "Search results were retrieved successfully" in res.stdout

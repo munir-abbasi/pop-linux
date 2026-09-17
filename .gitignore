@@ -10,7 +10,16 @@ venv/
 dist/
 build/
 build_wheels/
+# Agent/control documents are local-only and intentionally kept out of the
+# public repository; the public repo ships the code and README.md.
 AGENTS.md
+CLAUDE.md
 design_specification.md
 implementation_plan.md
+AGENTS.public.md
+DESIGN.md
+ROADMAP.md
+IMPLEMENTATION_AGENT_PROMPT.md
 blog-post-pop-linux.md
+x.com-announcement.md
+.freebuff/

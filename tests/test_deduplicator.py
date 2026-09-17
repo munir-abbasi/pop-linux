@@ -10,7 +10,8 @@ def test_normalize_doi():
 
 
 def test_normalize_title():
-    assert normalize_title("Asthma & COPD: A Review!") == "asthma  copd a review"
+    # Packet 6: normalize_title now lives in utils.identity with whitespace collapse.
+    assert normalize_title("Asthma & COPD: A Review!") == "asthma copd a review"
 
 
 def test_is_same_paper():

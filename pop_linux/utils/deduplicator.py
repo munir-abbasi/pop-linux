@@ -1,44 +1,33 @@
-import re
-from difflib import SequenceMatcher
+"""Deduplication merge policy.
+
+Equivalence decisions are owned exclusively by pop_linux.utils.identity (the
+single publication-identity service). This module retains the merge policy
+(preferred-value selection) and the DOI-index fast path, and delegates
+equivalence to the identity service.
+
+Identity helpers remain importable from here for backwards compatibility, but
+they are thin re-exports; new code must import from pop_linux.utils.identity
+directly.
+"""
+
 from pop_linux.models import Paper
+from pop_linux.utils.identity import is_same_paper, normalize_doi, normalize_title
 
-
-def normalize_doi(doi: str | None) -> str | None:
-    """Normalizes DOI string by removing HTTP/HTTPS prefixes and converting to lowercase."""
-    if not doi:
-        return None
-    cleaned = re.sub(r"^https?://(dx\.)?doi\.org/", "", doi.strip(), flags=re.IGNORECASE)
-    return cleaned.lower() if cleaned else None
-
-
-def normalize_title(title: str) -> str:
-    """Cleans title by removing non-alphanumeric characters and converting to lowercase."""
-    return re.sub(r"[^\w\s]", "", title.lower()).strip()
-
-
-def is_same_paper(p1: Paper, p2: Paper) -> bool:
-    """Determines if two paper objects represent the same publication."""
-    # 1. Exact DOI match
-    doi1 = normalize_doi(p1.doi)
-    doi2 = normalize_doi(p2.doi)
-    if doi1 and doi2 and doi1 == doi2:
-        return True
-
-    # 2. Fuzzy Title match (SequenceMatcher >= 0.92) when years match or are missing
-    t1 = normalize_title(p1.title)
-    t2 = normalize_title(p2.title)
-    if not t1 or not t2:
-        return False
-
-    if p1.year and p2.year and p1.year != p2.year:
-        return False
-
-    similarity = SequenceMatcher(None, t1, t2).ratio()
-    return similarity >= 0.92
+__all__ = [
+    "deduplicate_papers",
+    "is_same_paper",
+    "merge_paper_pair",
+    "normalize_doi",
+    "normalize_title",
+]
 
 
 def merge_paper_pair(p1: Paper, p2: Paper) -> Paper:
-    """Merges two duplicate paper objects, preserving maximum metadata and highest citation count."""
+    """Merges two duplicate paper objects, preserving maximum metadata and highest citation count.
+
+    The citation policy is explicitly `max_observed` (see MetricsContext); the
+    losing observation is retained at the provenance layer (Packet 7).
+    """
     best_citations = max(p1.citations, p2.citations)
     best_doi = p1.doi or p2.doi
     best_url = p1.url or p2.url
@@ -70,7 +59,12 @@ def merge_paper_pair(p1: Paper, p2: Paper) -> Paper:
 
 
 def deduplicate_papers(papers: list[Paper]) -> list[Paper]:
-    """Deduplicates a list of Paper objects by merging duplicate records."""
+    """Deduplicates a list of Paper objects by merging duplicate records.
+
+    Equivalence is decided by the shared identity service; the DOI index is
+    the fast path. A fuzzy merge that acquires a DOI registers it in the index
+    so later identical-DOI records hit the fast path.
+    """
     if not papers:
         return []
 
@@ -95,7 +89,6 @@ def deduplicate_papers(papers: list[Paper]) -> list[Paper]:
                 merged = True
                 break
         if not merged:
-            doi_key = normalize_doi(paper.doi)
             if doi_key:
                 doi_index[doi_key] = len(unique_papers)
             unique_papers.append(paper)

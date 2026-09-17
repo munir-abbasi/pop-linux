@@ -1,10 +1,9 @@
-import time
 
 import httpx
 
-from pop_linux.models import Author, Paper, QueryResult
-from pop_linux.providers.base import BaseProvider
-from pop_linux.utils.metrics import calculate_metrics
+from pop_linux.execution_models import SearchRequest
+from pop_linux.models import Author, Paper
+from pop_linux.providers.base import BaseProvider, ProviderFetchResult
 
 
 def _reconstruct_openalex_abstract(inverted_index: dict[str, list[int]] | None) -> str | None:
@@ -28,104 +27,87 @@ class OpenAlexProvider(BaseProvider):
     """OpenAlex REST search provider (default fast, structured provider)."""
     name = "openalex"
     API_URL = "https://api.openalex.org/works"
+    #: OpenAlex per-page ceiling per current official API docs.
+    MAX_PER_PAGE = 200
 
-    async def search(self, query: str, limit: int = 50, **kwargs) -> QueryResult:
-        start_time = time.time()
-        author = kwargs.get("author")
-        journal = kwargs.get("journal")
-        issn = kwargs.get("issn")
-        year_from = kwargs.get("year_from")
-        year_to = kwargs.get("year_to")
-        min_citations = kwargs.get("min_citations")
+    async def _fetch_native(self, request: SearchRequest) -> ProviderFetchResult:
+        """OpenAlex native retrieval with cursor pagination.
 
-        # Build query string with author/journal terms if provided
-        query_terms = [query] if query else []
-        if author:
-            query_terms.append(f'author.display_name:"{author}"')
-        if journal:
-            query_terms.append(f'primary_location.source.display_name:"{journal}"')
-
+        Cursor semantics verified against the live API (2026-09): the first
+        request uses cursor="*" and each response's meta.next_cursor feeds the
+        next request until the requested limit is satisfied or the token is
+        absent.
+        """
+        f = request.filters
+        query_terms = [request.query] if request.query else []
+        if f.author:
+            query_terms.append(f'author.display_name:"{f.author}"')
+        if f.journal:
+            query_terms.append(f'primary_location.source.display_name:"{f.journal}"')
         full_query = " ".join(query_terms).strip()
 
         params: dict[str, str | int] = {
             "search": full_query,
-            "per_page": min(limit, 200),
-            "sort": "cited_by_count:desc"
+            "per_page": min(request.limit, self.MAX_PER_PAGE),
+            "sort": "cited_by_count:desc",
         }
 
-        # Apply OpenAlex publication_year filter if year range supplied
-        filters = []
-        if year_from is not None and year_to is not None:
-            filters.append(f"publication_year:{year_from}-{year_to}")
-        elif year_from is not None:
-            filters.append(f"publication_year:>{year_from - 1}")
-        elif year_to is not None:
-            filters.append(f"publication_year:<{year_to + 1}")
-
-        if issn:
-            filters.append(f"issn:{issn}")
-
-        if filters:
-            params["filter"] = ",".join(filters)
+        oa_filters = []
+        if f.year_from is not None and f.year_to is not None:
+            oa_filters.append(f"publication_year:{f.year_from}-{f.year_to}")
+        elif f.year_from is not None:
+            oa_filters.append(f"publication_year:>{f.year_from - 1}")
+        elif f.year_to is not None:
+            oa_filters.append(f"publication_year:<{f.year_to + 1}")
+        if f.issn:
+            oa_filters.append(f"issn:{f.issn}")
+        if oa_filters:
+            params["filter"] = ",".join(oa_filters)
 
         headers = self.get_headers()
-        async with httpx.AsyncClient(timeout=20.0, headers=headers) as client:
-            response = await self._get_with_retry(client, self.API_URL, params)
-            response.raise_for_status()
-            data = response.json()
 
-        total_found = data.get("meta", {}).get("count", 0)
-        results = data.get("results", [])
+        async def fetch_page(cursor: str):
+            page_params = dict(params)
+            page_params["cursor"] = cursor or "*"
+            async with httpx.AsyncClient(timeout=20.0, headers=headers) as client:
+                response = await self._get_with_retry(client, self.API_URL, page_params)
+                response.raise_for_status()
+                data = response.json()
+            meta = data.get("meta", {})
+            papers = [self._parse_work(item) for item in data.get("results", [])]
+            return papers, meta.get("count"), meta.get("next_cursor")
 
-        papers: list[Paper] = []
-        for item in results:
-            title = item.get("display_name") or item.get("title") or "Untitled"
-            year = item.get("publication_year")
-            citations = item.get("cited_by_count", 0)
-            doi = item.get("doi")
+        return await self._paginate(request, fetch_page, page_size=params["per_page"])
 
-            # Extract Primary Location / Journal / URL
-            primary_loc = item.get("primary_location") or {}
-            source = primary_loc.get("source") or {}
-            journal_name = source.get("display_name")
-            url = primary_loc.get("landing_page_url") or doi
+    def _parse_work(self, item: dict) -> Paper:
+        """Parses one OpenAlex work record into a normalized Paper."""
+        title = item.get("display_name") or item.get("title") or "Untitled"
+        doi = item.get("doi")
 
-            # Extract Authors
-            authorships = item.get("authorships") or []
-            authors: list[Author] = []
-            for auth_item in authorships:
-                auth_data = auth_item.get("author") or {}
-                auth_name = auth_data.get("display_name")
-                if auth_name:
-                    insts = auth_item.get("institutions") or []
-                    inst_name = insts[0].get("display_name") if insts else None
-                    authors.append(Author(name=auth_name, affiliation=inst_name, author_id=auth_data.get("id")))
+        primary_loc = item.get("primary_location") or {}
+        source = primary_loc.get("source") or {}
+        journal_name = source.get("display_name")
+        url = primary_loc.get("landing_page_url") or doi
 
-            abstract = _reconstruct_openalex_abstract(item.get("abstract_inverted_index"))
+        authorships = item.get("authorships") or []
+        authors: list[Author] = []
+        for auth_item in authorships:
+            auth_data = auth_item.get("author") or {}
+            auth_name = auth_data.get("display_name")
+            if auth_name:
+                insts = auth_item.get("institutions") or []
+                inst_name = insts[0].get("display_name") if insts else None
+                authors.append(Author(name=auth_name, affiliation=inst_name, author_id=auth_data.get("id")))
 
-            paper = Paper(
-                title=title,
-                authors=authors,
-                year=year,
-                journal=journal_name,
-                citations=citations,
-                doi=doi,
-                url=url,
-                abstract=abstract,
-                source_provider=self.name,
-                paper_id=item.get("id")
-            )
-            papers.append(paper)
-
-        papers = self.filter_papers(papers, year_from=year_from, year_to=year_to, min_citations=min_citations)
-        metrics = calculate_metrics(papers)
-        elapsed = round(time.time() - start_time, 2)
-
-        return QueryResult(
-            query=query,
-            provider=self.name,
-            total_found=total_found,
-            papers=papers,
-            metrics=metrics,
-            search_time_seconds=elapsed
+        return Paper(
+            title=title,
+            authors=authors,
+            year=item.get("publication_year"),
+            journal=journal_name,
+            citations=item.get("cited_by_count", 0),
+            doi=doi,
+            url=url,
+            abstract=_reconstruct_openalex_abstract(item.get("abstract_inverted_index")),
+            source_provider=self.name,
+            paper_id=item.get("id"),
         )

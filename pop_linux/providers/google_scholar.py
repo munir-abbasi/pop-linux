@@ -5,10 +5,10 @@ import httpx
 from bs4 import BeautifulSoup
 
 from pop_linux.config import DEFAULT_USER_AGENT, load_config
+from pop_linux.execution_models import ExecutionMessage, SearchRequest
 from pop_linux.models import Author, Paper, QueryResult
-from pop_linux.providers.base import BaseProvider
+from pop_linux.providers.base import BaseProvider, ProviderFetchResult
 from pop_linux.utils.cookie_bridge import load_cookies, solve_google_scholar_captcha
-from pop_linux.utils.metrics import calculate_metrics
 
 
 def _parse_scholar_author_line(byline: str) -> tuple[list[Author], str | None, int | None]:
@@ -105,6 +105,9 @@ class GoogleScholarProvider(BaseProvider):
     BASE_URL = "https://scholar.google.com/scholar"
     PROFILE_URL = "https://scholar.google.com/citations"
 
+    #: Set when an interactive challenge solve occurred during the last fetch.
+    interaction_occurred: bool = False
+
     @staticmethod
     def _is_blocked(status_code: int, url: str, html: str) -> bool:
         """Detects Google Scholar CAPTCHA / rate-limit responses."""
@@ -138,6 +141,7 @@ class GoogleScholarProvider(BaseProvider):
             return html_content
 
         # Trigger Playwright CAPTCHA solver
+        self.interaction_occurred = True
         new_cookies = await solve_google_scholar_captcha(str(resp.url))
         if new_cookies:
             for name, value in new_cookies.items():
@@ -151,13 +155,16 @@ class GoogleScholarProvider(BaseProvider):
             )
         return retry_html
 
-    async def search(self, query: str, limit: int = 50, **kwargs) -> QueryResult:
+    async def _fetch_native(self, request: SearchRequest) -> ProviderFetchResult:
+        """Google Scholar HTML search (migrated to the engine fetch contract)."""
         start_time = time.time()
-        author = kwargs.get("author")
-        journal = kwargs.get("journal")
-        year_from = kwargs.get("year_from")
-        year_to = kwargs.get("year_to")
-        min_citations = kwargs.get("min_citations")
+        author = request.filters.author
+        journal = request.filters.journal
+        year_from = request.filters.year_from
+        year_to = request.filters.year_to
+        min_citations = request.filters.min_citations
+        query = request.query
+        limit = request.limit
 
         search_terms = [query] if query else []
         if author:
@@ -188,12 +195,15 @@ class GoogleScholarProvider(BaseProvider):
         timeout = load_config().get("google_scholar_timeout", 25.0)
         collected_papers: list[Paper] = []
         offset = 0
+        pages = 0
+        self.interaction_occurred = False
         async with httpx.AsyncClient(timeout=timeout, headers=headers, follow_redirects=True) as client:
             while offset < limit:
                 page_params = dict(base_params)
                 if offset:
                     page_params["start"] = offset
                 html_content = await self._fetch_scholar(client, self.BASE_URL, page_params, cookies=cookies)
+                pages += 1
                 page_papers = parse_google_scholar_html(html_content)
                 collected_papers.extend(page_papers)
                 if not page_papers:
@@ -202,21 +212,37 @@ class GoogleScholarProvider(BaseProvider):
                 if offset >= limit * 2:
                     break  # Safety cap: prevent runaway pagination
 
-        papers = self.filter_papers(collected_papers[:limit], year_from=year_from, year_to=year_to, min_citations=min_citations)
-        metrics = calculate_metrics(papers)
+        filtered = self.filter_papers(collected_papers[:limit], year_from=year_from, year_to=year_to, min_citations=min_citations)
         elapsed = round(time.time() - start_time, 2)
 
-        return QueryResult(
-            query=query,
-            provider=self.name,
-            total_found=len(papers),
-            papers=papers,
-            metrics=metrics,
-            search_time_seconds=elapsed
+        warnings: list[ExecutionMessage] = []
+        if self.interaction_occurred:
+            warnings.append(
+                ExecutionMessage(
+                    code="PROVIDER_BLOCKED_INTERACTION_REQUIRED",
+                    message="CAPTCHA challenge encountered; interactive solve was performed",
+                    provider=self.name,
+                    retryable=None,
+                )
+            )
+
+        return ProviderFetchResult(
+            papers=filtered,
+            matched_count=None,  # Scholar HTML does not expose a total match count
+            fetched_count=len(collected_papers),
+            returned_count=len(filtered),
+            elapsed_seconds=elapsed,
+            pages_or_requests=pages,
+            warnings=warnings,
         )
 
     async def search_profile(self, user_id: str, limit: int = 100, **kwargs) -> QueryResult:
-        """Harvests publications directly from a Google Scholar user profile ID."""
+        """Harvests publications directly from a Google Scholar user profile ID.
+
+        Legacy compatibility path retained for the human profile workflow.
+        """
+        from pop_linux.utils.metrics import calculate_metrics
+
         start_time = time.time()
         year_from = kwargs.get("year_from")
         year_to = kwargs.get("year_to")

@@ -4,11 +4,15 @@ from datetime import datetime, timezone
 from pop_linux.models import Metrics, Paper
 
 
-def calculate_metrics(papers: list[Paper]) -> Metrics:
+def calculate_metrics(papers: list[Paper], *, as_of_year: int | None = None) -> Metrics:
     """
     Computes Harzing bibliometric metrics from a list of Paper objects.
     Calculates: Total Papers, Total Citations, Average Citations/Paper,
     Citations/Author, h-index, g-index, e-index, hI-annual index, and i10-index.
+
+    as_of_year pins the effective "current year" for age-derived metrics
+    (hI_annual, awcr, aw_index) so historical recalculations are reproducible;
+    it defaults to the current UTC year, preserving prior behavior exactly.
     """
     if not papers:
         return Metrics()
@@ -46,11 +50,12 @@ def calculate_metrics(papers: list[Paper]) -> Metrics:
         e_index = math.sqrt(max(0, excess_citations))
 
     # 4. hI-annual: (sum(c_i / author_count) for top h papers) / years_span
+    effective_year = as_of_year if as_of_year is not None else datetime.now(timezone.utc).year
     hI_annual = 0.0
     if h_index > 0:
         # Find minimum publication year among all papers with valid years
         valid_years = [p.year for p in papers if p.year is not None and p.year > 1800]
-        current_year = datetime.now(timezone.utc).year
+        current_year = effective_year
         if valid_years:
             min_year = min(valid_years)
             years_span = float(max(1, current_year - min_year + 1))
@@ -73,7 +78,7 @@ def calculate_metrics(papers: list[Paper]) -> Metrics:
             break
 
     # 6. AWCR (Age-Weighted Citation Rate) and AW-index
-    current_year = datetime.now(timezone.utc).year
+    current_year = effective_year
     awcr = 0.0
     for p in papers:
         if p.citations > 0:

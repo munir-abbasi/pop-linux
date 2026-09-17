@@ -3,6 +3,9 @@ Scholarly search providers package for pop-linux.
 """
 
 from pop_linux.providers.base import BaseProvider
+from pop_linux.providers.capabilities import validate_registry
+
+__all__ = ["BaseProvider", "PROVIDERS", "get_provider", "validate_registry"]
 from pop_linux.providers.crossref import CrossRefProvider
 from pop_linux.providers.openalex import OpenAlexProvider
 from pop_linux.providers.pubmed import PubMedProvider
@@ -14,6 +17,9 @@ PROVIDERS: dict[str, type[BaseProvider]] = {
     "crossref": CrossRefProvider,
     "pubmed": PubMedProvider,
 }
+
+# Fail fast if provider construction and the capability registry drift apart.
+validate_registry(PROVIDERS)
 
 def get_provider(name: str) -> BaseProvider:
     name_lower = name.lower()

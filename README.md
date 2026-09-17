@@ -1,6 +1,6 @@
 # Perish or Publish Linux (`pop-linux`)
 
-`pop-linux` (**Perish or Publish Linux**) is a native, lightweight, production-hardened Python CLI application for Linux. It provides multi-source academic paper harvesting, comprehensive Harzing bibliometric index calculations ($h$, $g$, $e$, $hI_{\text{annual}}$, $hL_{\text{norm}}$, $\text{AWCR}$, $\text{AW-index}$, $i10$), multi-provider data deduplication, SQLite search snapshot tracking, and Playwright-powered Google Scholar CAPTCHA solving.
+`pop-linux` (**Perish or Publish Linux**) is a native Python CLI application for Linux. It provides multi-source academic paper harvesting, bibliometric calculations ($h$, $g$, $e$, $hI_{\text{annual}}$, $hL_{\text{norm}}$, $\text{AWCR}$, $\text{AW-index}$, $i10$), multi-provider data deduplication, SQLite search snapshot tracking, and a Playwright browser bridge for interactive Google Scholar challenge handling.
 
 ---
 
@@ -21,24 +21,24 @@ However, because the original software is natively available only for Microsoft 
 |---|---|---|
 | **Target Platform** | Microsoft Windows GUI (~3.1 MB) & macOS | Native Linux CLI (Python 3.11+) |
 | **Windows Dependency** | Requires Windows (or Wine/WinPodx/Proton wrappers on Linux) | **Zero Windows dependency** — 100% native Linux CLI |
-| **Interface & Workflow** | Interactive Desktop GUI | Rich Terminal UI (TUI) + Headless / Scriptable CLI |
+| **Interface & Workflow** | Interactive Desktop GUI | Rich terminal output + scriptable CLI |
 | **Supported Data Sources** | Google Scholar, GS Profiles, OpenAlex, Crossref, PubMed, Semantic Scholar, Scopus*, Web of Science* (*Subscription/Key required) | OpenAlex (Default), Semantic Scholar, Crossref, PubMed, Google Scholar, Google Scholar Profiles, plus `--provider all` multi-source search |
-| **Google Scholar CAPTCHA Bridge** | Manual browser popup / proxy configuration when blocked | Automated Playwright Chromium browser bridge that pops up when blocked, allows interactive CAPTCHA solving, and saves session cookies (`~/.config/pop_linux/cookies.json`) for automatic reuse |
+| **Google Scholar CAPTCHA Bridge** | Manual browser popup / proxy configuration when blocked | Playwright Chromium browser bridge that opens when blocked, allows interactive challenge solving, and saves session cookies (`~/.config/pop_linux/cookies.json`) for reuse |
 | **Multi-Provider Search** | Single-provider queries (manual inspection per database) | `--provider all` parallel multi-source harvesting with automated DOI & fuzzy title ($\ge 0.92$) deduplication |
-| **Bibliometrics Suite** | Standard Harzing metrics ($h, g, e, hI_{\text{annual}}, hL_{\text{norm}}, \text{AWCR}, \text{AW-index}, i10$) | Identical Harzing bibliometric formulas ($h, g, e, hI_{\text{annual}}, hL_{\text{norm}}, \text{AWCR}, \text{AW-index}, i10$) + `--show-h-core` CLI filter |
+| **Bibliometrics Suite** | Standard Harzing metrics ($h, g, e, hI_{\text{annual}}, hL_{\text{norm}}, \text{AWCR}, \text{AW-index}, i10$) | Implements the listed bibliometric metrics over the returned dataset + `--show-h-core` CLI filter |
 | **Search History & Trajectory** | Saved search files (`.pop` / XML) | Native SQLite database (`~/.config/pop_linux/history.sqlite3`) auto-saving all search snapshots with `pop-linux history` and `pop-linux diff <snap1> <snap2>` citation growth tracking |
 | **File Merging** | Manual GUI row management | `pop-linux merge file1.json file2.json` CLI command |
 | **Export Formats** | CSV, EndNote, PDF, BibTeX, Copy-to-clipboard | BibTeX (`.bib`), CSV (`.csv`), JSON (`.json`), RIS (`.ris`) |
 
 ---
 
-## ⭐ Features Where `pop-linux` Has Full Parity or Superiority
+## ⭐ Implemented Capabilities and Linux-Oriented Extensions
 
 > [!IMPORTANT]
-> **Summary**: `pop-linux` achieves 100% mathematical parity with Harzing's bibliometric engine while adding parallel multi-provider search, automatic cookie-based CAPTCHA solving, and native SQLite citation trajectory diffing.
+> **Summary**: `pop-linux` implements the listed bibliometric metrics and adds parallel multi-provider search, interactive Google Scholar challenge handling with cookie reuse, and native SQLite citation trajectory diffing.
 
-### 🎯 Complete Harzing Bibliometrics Engine (100% Parity)
-Calculates all standard and advanced Harzing impact metrics:
+### 🎯 Bibliometrics Engine
+Calculates the following bibliometric metrics over the papers returned by the current search or loaded dataset:
 - **Impact Indices**: $h$-index, $g$-index, $e$-index (excess citations), $hI_{\text{annual}}$ (individual annual h-index).
 - **Normalized & Age-Weighted Indices**: $hL_{\text{norm}}$ (author-count normalized h-index), $\text{AWCR}$ (Age-Weighted Citation Rate), and $\text{AW-index}$.
 - **Summary Statistics**: $i10$-index, total citations, average citations per paper, citations per author, papers per author, citations per year.
@@ -46,11 +46,11 @@ Calculates all standard and advanced Harzing impact metrics:
 
 ### 🔀 Multi-Source Harvesting & Concurrent Search (`pop-linux` Superiority)
 - **Windows PoP**: Queries one database at a time.
-- **`pop-linux`**: Supports querying individual providers (**OpenAlex**, **Semantic Scholar**, **CrossRef**, **PubMed**, **Google Scholar**) or running `--provider all` to query all open databases simultaneously with automated DOI and fuzzy title ($\ge 0.92$) deduplication.
+- **`pop-linux`**: Supports querying individual providers (**OpenAlex**, **Semantic Scholar**, **CrossRef**, **PubMed**, **Google Scholar**) or running `--provider all` to query the four open-API providers simultaneously with automated DOI and fuzzy title ($\ge 0.92$) deduplication.
 
-### 🌐 Google Scholar CAPTCHA Bridge (`pop-linux` Superiority)
+### 🌐 Google Scholar CAPTCHA Bridge
 - **Windows PoP**: Prompts manual browser popups or proxy configurations when blocked.
-- **`pop-linux`**: Uses an automated Playwright Chromium browser bridge that launches on HTTP 429/CAPTCHA blocks, lets you solve the challenge interactively, and saves session cookies (`~/.config/pop_linux/cookies.json`) for automatic background reuse.
+- **`pop-linux`**: Uses a Playwright Chromium browser bridge that launches on HTTP 429/challenge blocks, lets you solve the challenge interactively, and saves session cookies (`~/.config/pop_linux/cookies.json`) for later reuse.
 
 ### 🕒 Citation History & Growth Trajectory Tracking (`pop-linux` Superiority)
 - **Windows PoP**: Requires manually saving and managing `.pop` query files.
@@ -58,6 +58,13 @@ Calculates all standard and advanced Harzing impact metrics:
 
 ### 🎯 Search Filters & Profiles
 Filter queries by `--author`, `--journal`, `--issn`, `--year-from`, `--year-to`, `--min-citations`, and harvest Google Scholar user profiles directly with `--profile <user_id>`.
+
+### Interpretation notes
+
+- Bibliometric values are calculated from the records actually returned after the active limit and filters. A limited topic search should not be interpreted as a complete author- or database-level bibliometric record.
+- `--provider all` searches OpenAlex, Semantic Scholar, CrossRef, and PubMed concurrently. Google Scholar is excluded from this mode because it may require interactive browser handling.
+- When duplicate records from different providers are merged, the current implementation keeps the highest observed citation count. Multi-provider metrics therefore describe the merged dataset rather than one provider's citation index.
+- Provider filter semantics differ. CrossRef and PubMed support structured ISSN handling; OpenAlex uses its API filter; Semantic Scholar includes ISSN as a query hint; Google Scholar does not have an ISSN path in this implementation.
 
 ---
 
@@ -71,15 +78,15 @@ Filter queries by `--author`, `--journal`, `--issn`, `--year-from`, `--year-to`,
 ## ✨ Features
 
 - 🔍 **Multi-Provider Academic Search**: Harvest metadata from OpenAlex (250M+ works), Semantic Scholar, CrossRef, PubMed, and Google Scholar.
-- 🎯 **Advanced Query Targeting**: Filter queries by `--author`, `--journal`, `--issn`, `--year-from`, `--year-to`, and `--min-citations`. *Note:* ISSN filtering is applied by the OpenAlex, CrossRef, and PubMed providers; Semantic Scholar and Google Scholar do not expose an ISSN field and ignore it.
+- 🎯 **Advanced Query Targeting**: Filter queries by `--author`, `--journal`, `--issn`, `--year-from`, `--year-to`, and `--min-citations`. Filter precision varies by provider; Semantic Scholar treats ISSN as a query hint and Google Scholar does not use the ISSN option.
 - 📊 **Complete Harzing Bibliometrics Suite**:
   - **Standard Metrics**: Total Papers, Total Citations, Average Citations/Paper, Citations/Author, Papers/Author.
   - **Impact Indices**: $h$-index, $g$-index, $e$-index (excess citations), $hI_{\text{annual}}$ (individual annual h-index), $i10$-index.
   - **Normalized & Age-Weighted Indices**: $hL_{\text{norm}}$ (author-count normalized $h$-index), $\text{AWCR}$ (Age-Weighted Citation Rate), and $\text{AW-index}$.
-  - **H-Core Subsets**: Filter Rich TUI table view to only show $h$-core papers with `--show-h-core`.
+  - **H-Core Subsets**: Filter the Rich terminal table to only show $h$-core papers with `--show-h-core`.
 - 🔀 **Multi-Provider Deduplication**: Merge results from multiple databases using `--provider all` or run `pop-linux merge file1.json file2.json`.
-- 👤 **Google Scholar Profile Harvesting**: Harvest full publication lists directly from Google Scholar profile IDs using `--profile <id>`.
-- 🌐 **Playwright CAPTCHA Bridge**: Interactive Chromium fallback solves Google Scholar CAPTCHA challenges seamlessly and saves session cookies for background reuse.
+- 👤 **Google Scholar Profile Harvesting**: Harvest publications directly from Google Scholar profile IDs using `--profile <id>`, bounded by the active `--limit`/default limit.
+- 🌐 **Playwright CAPTCHA Bridge**: Interactive Chromium fallback lets you solve Google Scholar challenges and saves session cookies for later reuse.
 - 🕒 **SQLite Search History & Citation Diffing**: Automatically logs searches to `~/.config/pop_linux/history.sqlite3`. Compare growth deltas between search snapshots with `pop-linux diff <snap1> <snap2>`.
 - 📤 **Multi-Format Exporters**: Export search results to BibTeX (`.bib`), CSV (`.csv`), JSON (`.json`), and RIS (`.ris`).
 
@@ -125,7 +132,7 @@ pop-linux providers
 ## 🔑 API Keys & Provider Registration
 
 `pop-linux` works out of the box **with no API keys**. Adding free API keys for
-OpenAlex, Semantic Scholar, and NCBI/PubMed lifts their rate limits and is
+Semantic Scholar and NCBI/PubMed lifts their rate limits and is
 recommended for anything beyond occasional search runs. Keys are stored in
 `~/.config/pop_linux/config.toml` (auto-created with owner-only permissions) and
 are **masked in `pop-linux config --show` output** and never logged.
@@ -222,14 +229,27 @@ pop-linux search "machine learning in healthcare" --provider google_scholar --li
 > the file, its backups, and the plaintext API keys in `config.toml` should be
 > protected like credentials.
 
-### 7. Search Snapshot History & Citation Growth Diffing
+### 7. Search Snapshot History, Rerun & Citation Growth Diffing
 ```bash
 # List past search snapshots
 pop-linux history
 
 # Compare citation growth and metric trajectory between snapshot #1 and snapshot #2
 pop-linux diff 1 2
+
+# Re-execute a saved search exactly as it ran (same resolved request, same provider set)
+pop-linux rerun 42
+
+# Machine-readable rerun: prints the same JSON execution envelope as `--machine search`
+pop-linux --machine rerun 42
 ```
+
+**History storage (schema v2):** every search snapshot stores its resolved request, per-provider
+reports, provenance, metrics context, and rerun lineage alongside the classic result payload.
+Legacy v1 databases are migrated automatically on first use, with a versioned backup
+(`history.sqlite3.bak-<timestamp>`) written first; if migration fails, the original database is
+left untouched and usable. A history-write failure never masks a successful search: the CLI
+warns and continues, and the `--no-history` flag skips persistence entirely.
 
 ### 8. Merge Saved Results
 ```bash
@@ -239,15 +259,43 @@ pop-linux merge results1.json results2.json --export merged_library.bib
 ### 9. View Configuration & Providers
 ```bash
 pop-linux providers
+pop-linux capabilities
 pop-linux config --show
 pop-linux config --set default_provider --value semanticscholar
+```
+
+### 10. Recompute Metrics for a Saved Result
+```bash
+pop-linux metrics /tmp/results.json
 ```
 
 ---
 
 ## 🤖 AI Agent & MCP Integration Guide (Claude Code, OpenCode, Cursor)
 
-`pop-linux` was built CLI-first and Python-native, making it seamless to integrate into AI coding agents, autonomous LLM execution loops, and MCP (Model Context Protocol) setups.
+`pop-linux` is CLI-first and Python-native. It ships a dedicated machine execution profile for agents: `--machine` prints exactly one versioned JSON execution envelope to stdout, never opens a browser, and never writes history unless explicitly requested.
+
+### 0. Machine Mode (recommended for agents)
+
+```bash
+# Step 0: discover providers, filter modes, pagination, and local readiness
+# (no network calls; parse one JSON document):
+pop-linux --machine capabilities
+
+# Then execute and parse one JSON document:
+pop-linux --machine search "asthma" --provider all --limit 20
+```
+
+Contract:
+
+- stdout carries exactly one JSON document with `schema: "pop-linux.execution/v1"`; pass it straight to `json.loads()` with no preprocessing.
+- Status is one of `success`, `partial`, `empty` (exit code 0) or `error` (exit code 1). Provider-level failures appear as structured entries in `provider_reports` (status plus classified, retryable error codes), never as terminal prose.
+- `google_scholar` and `--profile` are refused with an `INTERACTION_FORBIDDEN` error rather than risking an unexpected Chromium launch.
+- No history snapshot is written unless `--save-history` is passed; `persistence` in the envelope reports every side effect (snapshot id, exported files, structured `EXPORT_FAILED`/`HISTORY_WRITE_FAILED` errors).
+- `--export` remains a scholarly-data projection (BibTeX/CSV/JSON/RIS) and is independent of machine stdout.
+- Every provider report includes `pages_or_requests` (retrieval scope) and `filter_modes` describing how each requested filter was enforced (`native`, `query_hint`, `post_filter`, or `unsupported` with a structured `FILTER_UNSUPPORTED` warning); requests that exceed one page are paginated up to the requested limit with safety guards (OpenAlex/CrossRef cursor paging, PubMed `retstart`, Semantic Scholar `offset`/`next`).
+
+The human examples below remain fully supported.
 
 ### 1. Direct Bash Execution (Claude Code CLI / OpenCode / Cursor Agent)
 Any AI agent with terminal execution capabilities can run `pop-linux` directly and parse structured JSON outputs:
