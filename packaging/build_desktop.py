@@ -64,6 +64,7 @@ def collect_notices():
 
 
 def create_icons():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QColor, QImage, QPainter
     from PySide6.QtWidgets import QApplication
@@ -94,7 +95,9 @@ def create_icons():
 def smoke(executable: Path, label: str, environment=None):
     output = ARTIFACTS / f"{label}-smoke.json"
     screenshot = ARTIFACTS / f"{label}-workspace.png"
-    run([executable, "--isolated", "--self-test", output, "--screenshot", screenshot], timeout=90, env=environment)
+    env = dict(environment or os.environ)
+    env.setdefault("QT_QPA_PLATFORM", "offscreen")
+    run([executable, "--isolated", "--self-test", output, "--screenshot", screenshot], timeout=90, env=env)
     data = json.loads(output.read_text(encoding="utf-8"))
     if not data.get("steps") or not all(step.get("passed") is True for step in data["steps"]):
         raise RuntimeError(f"Frozen startup verification failed: {label}")
