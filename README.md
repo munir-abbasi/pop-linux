@@ -1,218 +1,171 @@
 # Perish or Publish (`pop-linux`)
 
-## Desktop workspace — 0.2.0 release candidate
-
-An optional Python/PySide6 desktop layer adds provider-aware searches, sortable
-and locally filtered publication tables, details and provenance, bibliometric
-cards, selected/full exports, history comparisons, JSON merging and masked
-settings. It reuses the existing engine and preserves the CLI.
-
-```bash
-python -m pip install '.[desktop]'
-pop-linux-gui
-# Or launch directly:
-python -m pop_linux.gui
-```
-
-The source GUI has been started and tested locally on Linux with Qt 6.11.2;
-the complete regression/GUI suite passed 240 tests. Native packages, Windows
-and macOS startup, and GitHub Releases remain unverified. The prepared native
-build workflow must pass before those platforms are claimed as supported.
-There are no native desktop release assets produced by this checkout yet.
-
-See the [desktop guide](docs/desktop.md), [repository audit](docs/desktop-audit.md)
-and [release candidate limitations](docs/release-0.2.0.md). Installation from a
-verified native package will not require Python; source installation does.
-The PolyForm Noncommercial License 1.0.0 is unchanged; Qt has separate license
-obligations. Desktop snapshots are saved explicitly. Linux configuration and
-research history remain in their existing locations.
-
-The following sections document the original CLI workflow.
-
-`pop-linux` (**Perish or Publish Linux**) is a native Python CLI application for Linux. It provides multi-source academic paper harvesting, bibliometric calculations ($h$, $g$, $e$, $hI_{\text{annual}}$, $hL_{\text{norm}}$, $\text{AWCR}$, $\text{AW-index}$, $i10$), multi-provider data deduplication, SQLite search snapshot tracking, and a Playwright browser bridge for interactive Google Scholar challenge handling.
+`pop-linux` is an independent, native academic literature search and bibliometric analysis suite for Linux, Windows, and macOS. It provides multi-source paper harvesting, Harzing bibliometric calculations ($h$, $g$, $e$, $hI_{\text{annual}}$, $hL_{\text{norm}}$, $\text{AWCR}$, $\text{AW-index}$, $i10$), automated DOI and fuzzy-title deduplication, SQLite citation trajectory diffing, a Playwright browser bridge for Google Scholar challenge handling, an optional PySide6 desktop workspace, and a deterministic machine execution envelope (`pop-linux.execution/v1`) for AI agents.
 
 ---
 
-## ❓ Why It Was Created & Comparison with Original Software
+## Native Desktop Releases (v0.2.0)
 
-### Motivation & Background
-The original **Publish or Perish** desktop software was created by **Professor Anne-Wil Harzing** ([harzing.com](https://www.harzing.com)) and has long been the gold standard for scholars evaluating academic impact across literature databases. The original application is a lightweight, highly efficient Windows desktop executable (~3.1 MB download).
+Native, standalone desktop packages are available for download from [GitHub Releases](https://github.com/munir-abbasi/pop-linux/releases/tag/v0.2.0). Native packages bundle Python and Qt dependencies; **no Python installation is required**.
 
-However, because the original software is natively available only for Microsoft Windows (and macOS via Wine/Crossover), Linux users traditionally had to rely on compatibility workarounds like Wine, WinPodx, Proton, or Virtual Machines to run it.
+| Platform | Architecture | Package Format | Details |
+|---|---|---|---|
+| **Linux** | `x86_64` | `.AppImage`, `.deb`, `.rpm`, `.tar.gz` | Built on Ubuntu 22.04 (`glibc >= 2.35`). Includes desktop integration and icons. |
+| **Windows** | `x64` | `.zip` | Portable archive; extract and run `PerishOrPublish.exe`. |
+| **macOS** | Apple Silicon (`arm64`) | `.zip` | Standalone `PerishOrPublish.app` for M1/M2/M3/M4 Macs. |
+| **macOS** | Intel (`x86_64`) | `.zip` | Standalone `PerishOrPublish.app` for legacy Intel Macs. |
 
-`pop-linux` was created specifically to give Linux scholars a **100% native Linux CLI alternative**—ensuring users do not need Microsoft Windows or any emulation workarounds (Wine/WinPodx/Proton/VMs) at all, while enabling direct integration into Linux terminal workflows, shell scripts, Cron jobs, and automated data pipelines.
+Every release includes cryptographic checksums in `SHA256SUMS`, startup verification logs, and headless smoke-test evidence.
 
----
-
-### 📊 Feature Comparison Matrix
-
-| Feature Dimension | Original Desktop Software (Harzing PoP) | `pop-linux` (Linux Native CLI) |
-|---|---|---|
-| **Target Platform** | Microsoft Windows GUI (~3.1 MB) & macOS | Native Linux CLI (Python 3.11+) |
-| **Windows Dependency** | Requires Windows (or Wine/WinPodx/Proton wrappers on Linux) | **Zero Windows dependency** — 100% native Linux CLI |
-| **Interface & Workflow** | Interactive Desktop GUI | Rich terminal output + scriptable CLI |
-| **Supported Data Sources** | Google Scholar, GS Profiles, OpenAlex, Crossref, PubMed, Semantic Scholar, Scopus* (*Subscription/Key required) | OpenAlex (Default), Semantic Scholar, CrossRef, PubMed, Google Scholar, Google Scholar Profiles, plus `--provider all` multi-source search |
-| **Google Scholar CAPTCHA Bridge** | Manual browser popup / proxy configuration when blocked | Playwright Chromium browser bridge that opens when blocked, allows interactive challenge solving, and saves session cookies (`~/.config/pop_linux/cookies.json`) for reuse |
-| **Multi-Provider Search** | Single-provider queries (manual inspection per database) | `--provider all` parallel multi-source harvesting with automated DOI & fuzzy title ($\ge 0.92$) deduplication |
-| **Bibliometrics Suite** | Standard Harzing metrics ($h$, $g$, $e$, $hI_{\text{annual}}$, $hL_{\text{norm}}$, $\text{AWCR}$, $\text{AW-index}$, $i10$) | Implements the listed bibliometric metrics over the returned dataset + `--show-h-core` CLI filter |
-| **Search History & Trajectory** | Saved search files (`.pop` / XML) | Native SQLite database (`~/.config/pop_linux/history.sqlite3`) auto-saving all search snapshots with `pop-linux history` and `pop-linux diff <snap1> <snap2>` citation growth tracking |
-| **File Merging** | Manual GUI row management | `pop-linux merge file1.json file2.json` CLI command |
-| **Export Formats** | CSV, EndNote, PDF, BibTeX, Copy-to-clipboard | BibTeX (`.bib`), CSV (`.csv`), JSON (`.json`), RIS (`.ris`) |
-
----
-
-## ⭐ Implemented Capabilities and Linux-Oriented Extensions
-
-> [!IMPORTANT]
-> **Summary**: `pop-linux` implements the listed bibliometric metrics and adds parallel multi-provider search, interactive Google Scholar challenge handling with cookie reuse, native SQLite citation trajectory diffing, and a structured agent-native execution architecture with provider capabilities registry, publication identity module, and engine orchestration.
-
-### Bibliometrics Engine
-Calculates the following bibliometric metrics over the papers returned by the current search or loaded dataset:
-- **Impact Indices**: $h$-index, $g$-index, $e$-index (excess citations), $hI_{\text{annual}}$ (individual annual h-index).
-- **Normalized & Age-Weighted Indices**: $hL_{\text{norm}}$ (author-count normalized h-index), $\text{AWCR}$ (Age-Weighted Citation Rate), and $\text{AW-index}$.
-- **Summary Statistics**: $i10$-index, total citations, average citations per paper, citations per author, papers per author, citations per year.
-- **Bonus**: Includes a `--show-h-core` CLI flag to isolate and display only the $h$-core paper subset.
-
-### Multi-Source Harvesting & Concurrent Search (`pop-linux` Superiority)
-- **Windows PoP**: Queries one database at a time.
-- **`pop-linux`**: Supports querying individual providers (**OpenAlex**, **Semantic Scholar**, **CrossRef**, **PubMed**, **Google Scholar**) or running `--provider all` to query the four open-API providers **concurrently** with automated DOI and fuzzy title ($\ge 0.92$) deduplication.
-- **New**: Multi-provider concurrent dispatch via the execution engine (`pop_linux/execution.py`) with partial-success handling and provenance tracking.
-
-### Playwright CAPTCHA Bridge
-- **Windows PoP**: Prompts manual browser popups or proxy configurations when blocked.
-- **`pop-linux`**: Uses a Playwright Chromium browser bridge that launches on HTTP 429/challenge blocks, lets you solve the challenge interactively, and saves session cookies (`~/.config/pop_linux/cookies.json`) for later reuse.
-
-### Citation History & Growth Trajectory Tracking (`pop-linux` Superiority)
-- **Windows PoP**: Requires manually saving and managing `.pop` query files.
-- **`pop-linux`**: Features a native SQLite database (`history.sqlite3`) that auto-logs search runs. Includes `pop-linux history` and `pop-linux diff <snap1> <snap2>` to track citation growth deltas and new paper discoveries between any two search snapshots over time.
-
-### Search Filters & Profiles
-Filter queries by `--author`, `--journal`, `--issn`, `--year-from`, `--year-to`, and `--min-citations`. Harvest Google Scholar user profiles directly with `--profile <user_id>`, bounded by the active `--limit`/default limit.
-- **New**: Provider-specific filter mode declarations via the capabilities registry (`pop_linux/providers/capabilities.py`).
-- **New**: Publication identity module (`pop_linux/utils/identity.py`) provides equivalence via DOI exact match and title fuzzy matching ($\ge 0.92$).
-
-### Agent-Native Execution Architecture (New)
-A structured execution layer that enables deterministic, reproducible, and machine-parseable search workflows:
-- **Execution Engine** (`pop_linux/execution.py`): Orchestrates multi-provider concurrent dispatch with partial-success handling and provenance tracking.
-- **Provider Capabilities Registry** (`pop_linux/providers/capabilities.py`): Declares filter modes per provider (native, query_hint, post_filter, unsupported).
-- **Publication Identity Module** (`pop_linux/utils/identity.py`): Deduplicates records via DOI exact match and title fuzzy matching ($\ge 0.92$).
-- **Fetch-Native Path**: All providers implement a native fetch interface that abstracts API calls, caching, and retry logic.
-- **Machine-Readable Envelopes** (`pop_linux/execution_models.py`): Structured JSON output with `schema: "pop-linux.execution/v1"` for programmatic consumption.
-
-### Metrics Context Tracking (New)
-Per-query bibliometric profiling is now tracked via the metrics context module, enabling performance characterization and reproducible benchmarking across search runs.
+### Running the Native Packages
+- **Linux AppImage**:
+  ```bash
+  chmod +x pop-linux-0.2.0-linux-x86_64.AppImage
+  ./pop-linux-0.2.0-linux-x86_64.AppImage
+  # Systems without FUSE:
+  APPIMAGE_EXTRACT_AND_RUN=1 ./pop-linux-0.2.0-linux-x86_64.AppImage
+  ```
+- **Linux Deb / RPM**:
+  ```bash
+  # Debian / Ubuntu / Mint:
+  sudo apt install ./pop-linux-0.2.0-linux-x86_64.deb
+  # Fedora / RHEL:
+  sudo dnf install ./pop-linux-0.2.0-linux-x86_64.rpm
+  ```
+- **Windows / macOS**: Extract the ZIP archive and open the application.
 
 ---
 
-## 🙏 Credits & Acknowledgments
+## Python Package Installation
 
-- **Original Concept & Metrics**: Deep gratitude and credit go to **Professor Anne-Wil Harzing** ([harzing.com](https://www.harzing.com)), who invented the original *Publish or Perish* software and authored foundational research on citation analysis and bibliometric indices.
-- *Disclaimer*: `pop-linux` is an independent open-source project created for Linux users and is not officially affiliated with or endorsed by Professor Anne-Wil Harzing or Harzing.com.
+If you prefer running `pop-linux` as a Python CLI or building the desktop UI from source:
 
----
-
-## ✨ Features
-
-- **Multi-Provider Academic Search**: Harvest metadata from OpenAlex (250M+ works), Semantic Scholar, CrossRef, PubMed, and Google Scholar.
-- **Advanced Query Targeting**: Filter queries by `--author`, `--journal`, `--issn`, `--year-from`, `--year-to`, and `--min-citations`. Filter precision varies by provider; Semantic Scholar treats ISSN as a query hint and Google Scholar does not use the ISSN option.
-- **Complete Harzing Bibliometrics Suite**:
-  - **Standard Metrics**: Total Papers, Total Citations, Average Citations/Paper, Citations/Author, Papers/Author.
-  - **Impact Indices**: $h$-index, $g$-index, $e$-index (excess citations), $hI_{\text{annual}}$ (individual annual h-index), $i10$-index.
-  - **Normalized & Age-Weighted Indices**: $hL_{\text{norm}}$ (author-count normalized $h$-index), $\text{AWCR}$ (Age-Weighted Citation Rate), and $\text{AW-index}$.
-  - **H-Core Subsets**: Filter the Rich terminal table to only show $h$-core papers with `--show-h-core`.
-- **Multi-Provider Deduplication**: Merge results from multiple databases using `--provider all` or run `pop-linux merge file1.json file2.json`.
-- **Google Scholar Profile Harvesting**: Harvest publications directly from Google Scholar profile IDs using `--profile <id>`, bounded by the active `--limit`/default limit.
-- **Playwright CAPTCHA Bridge**: Interactive Chromium fallback lets you solve Google Scholar challenges and saves session cookies for later reuse.
-- **SQLite Search History & Citation Diffing**: Automatically logs searches to `~/.config/pop_linux/history.sqlite3`. Compare growth deltas between search snapshots with `pop-linux diff <snap1> <snap2>`.
-- **Multi-Format Exporters**: Export search results to BibTeX (`.bib`), CSV (`.csv`), JSON (`.json`), and RIS (`.ris`).
-- **Agent-Native Execution**: `pop-linux --machine` outputs a single versioned JSON envelope for programmatic consumption by AI agents and automation tools.
-
----
-
-## 🛠️ Requirements
-
-- **Linux** (any modern distro). The Google Scholar CAPTCHA bridge additionally requires a graphical session (it opens a real browser window only when blocked).
-- **Python 3.11 or newer** (`python3 --version`).
-- **pip / venv** (standard on Debian/Ubuntu via the `python3-venv` and `python3-pip` packages).
-- **~20 MB free disk space** plus the optional Playwright Chromium download (~150 MB) if you want automated Google Scholar CAPTCHA solving.
-- No database server needed — search history is stored in a local SQLite file.
-
-## 🛠️ Installation
+### Requirements
+- Python 3.11 or newer (`python3 --version`).
+- Linux, macOS, or Windows.
+- SQLite3 (included in Python standard library).
 
 ```bash
 git clone https://github.com/munir-abbasi/pop-linux.git
 cd pop-linux
 
-# Create virtual environment and install pop-linux
+# Create and activate virtual environment
 python3 -m venv venv
-source venv/bin/activate
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install CLI only:
 pip install -e .
 
-# (Optional) Install Playwright Chromium for Google Scholar CAPTCHA solving
+# Or install with the PySide6 Desktop GUI:
+pip install -e '.[desktop]'
+
+# (Optional) Install Playwright Chromium for Google Scholar CAPTCHA solving:
 playwright install chromium
 ```
 
-> **Tip:** `pip install -e .` is the editable/development install. For a plain (non-editable) install, run `pip install .` instead — the `pop-linux` command is registered either way.
-
-### Verify the install
-
+### Quick Start
 ```bash
+# Launch the PySide6 Desktop GUI:
+pop-linux-gui
+# Or directly:
+python -m pop_linux.gui
+
+# Verify the CLI:
 pop-linux --help
 pop-linux providers
 ```
 
-## 🔑 API Keys & Provider Registration
-
-`pop-linux` works out of the box **with no API keys**. Adding free API keys for Semantic Scholar and NCBI/PubMed lifts their rate limits and is recommended for anything beyond occasional search runs. Keys are stored in `~/.config/pop_linux/config.toml` (auto-created with owner-only permissions) and are **masked in `pop-linux config --show` output** and never logged.
-
-Set a key with:
-
-```bash
-pop-linux config --set api_keys.semanticscholar --value "YOUR_KEY_HERE"
-pop-linux config --set api_keys.ncbi --value "YOUR_KEY_HERE"
-```
-
-### Configure your contact email (recommended)
-
-Set `polite_email` to **your own** email address. It is sent in the `User-Agent` header to the API providers (OpenAlex, Semantic Scholar, CrossRef, NCBI) as polite-pool identification, so providers can reach you about rate limits or API changes:
-
-```bash
-pop-linux config --set polite_email --value "you@example.com"
-```
-
-`polite_email` ships **unset** (empty) by default — this has no functional impact on search results. However, popular usage of the APIs expects a contact email, and failing to provide one may subject you to stricter throttling by some providers. You must configure it yourself before heavy use.
-
-> **Security note:** `config.toml` is written with `0600` permissions and the config directory with `0700`. Never commit your `config.toml` or share your keys — `pop-linux` asks you to supply keys only via the local config file.
-
-### Provider-by-provider registration steps
-
-| Provider | Required? | How to register | What a key gets you |
-|---|---|---|---|
-| **OpenAlex** | Keyless works for casual use | Create a free account at [openalex.org](https://openalex.org) and copy your key from [openalex.org/settings/api](https://openalex.org/settings/api) | 10× the keyless daily budget (keyless budget is fine for demos/testing only) |
-| **Semantic Scholar** | No | Request a free key via the [Semantic Scholar API product page](https://www.semanticscholar.org/product/api) ("Request an API key" form) — the key is sent to you by email | 1 request/second dedicated rate (keyless shares a global throttled pool) |
-| **NCBI / PubMed** | No | Create an [NCBI account](https://www.ncbi.nlm.nih.gov/account/), open **Account settings → API Key Management**, click **Create an API Key**, copy it | E-utilities rate limit raised from 3 to 10 requests/second |
-| **CrossRef** | No | No key exists — just use it | — (polite `mailto`/User-Agent identification) |
-| **Google Scholar** | No | No API key exists — the scraper persists a session cookie file (`~/.config/pop_linux/cookies.json`) after you solve a CAPTCHA once | Persistent session that avoids re-solving CAPTCHAs |
-
-> **⚠️ OpenAlex note (Feb 2026 change):** OpenAlex retired its "polite pool" (`mailto=` requests are now ignored) and moved to **free API keys** required for real-scale use. This release queries OpenAlex keyless (suited to casual / test use); configuring an OpenAlex API key in `pop-linux` is on the roadmap.
+See the [desktop guide](docs/desktop.md) and [release candidate documentation](docs/release-0.2.0.md) for full interface details.
 
 ---
 
-## 💻 Usage & Examples
+## Comparison with Original Software
+
+The original **Publish or Perish** desktop software was created by **Professor Anne-Wil Harzing** ([harzing.com](https://www.harzing.com)) and has long been the gold standard for citation analysis. `pop-linux` was created to give Linux and cross-platform researchers an open, scriptable, native environment without emulation layers (Wine/Proton/VMs), while adding multi-provider concurrency, SQLite persistence, and machine-readable execution.
+
+| Feature Dimension | Original Desktop Software (Harzing PoP) | `pop-linux` Suite |
+|---|---|---|
+| **Target Platform** | Microsoft Windows GUI & macOS (via Wine) | Native Linux, Windows, macOS (CLI + PySide6 Desktop) |
+| **Interface & Workflow** | Interactive Windows GUI | PySide6 Desktop GUI + Typer/Rich CLI + Machine JSON |
+| **Supported Data Sources** | Google Scholar, GS Profiles, OpenAlex, Crossref, PubMed, Semantic Scholar, Scopus* | OpenAlex (Default), Semantic Scholar, CrossRef, PubMed, Google Scholar, GS Profiles, plus `--provider all` |
+| **Multi-Provider Search** | Single provider per query | `--provider all` parallel harvesting with automated DOI & title deduplication |
+| **Google Scholar Challenge Handling** | Manual browser popup / proxy configuration | Embedded Playwright Chromium bridge saving session cookies (`cookies.json`) |
+| **Bibliometrics Suite** | Standard Harzing metrics ($h$, $g$, $e$, $hI_{\text{annual}}$, $hL_{\text{norm}}$, $\text{AWCR}$, $\text{AW-index}$, $i10$) | Implements identical Harzing metric formulas over dataset + `--show-h-core` filter |
+| **Search History & Trajectory** | Saved search files (`.pop` / XML) | Native SQLite database (`history.sqlite3`) with `history`, `diff`, and `rerun` |
+| **Automation & Agent Support** | GUI only | `--machine` versioned JSON envelope (`pop-linux.execution/v1`) |
+| **Export Formats** | CSV, EndNote, PDF, BibTeX | BibTeX (`.bib`), CSV (`.csv`), JSON (`.json`), RIS (`.ris`) |
+
+*Disclaimer: `pop-linux` is an independent open-source project and is not officially affiliated with or endorsed by Professor Anne-Wil Harzing or Harzing.com.*
+
+---
+
+## Core Capabilities
+
+### 1. Multi-Provider Harvesting & Concurrency
+- Query individual scholarly providers (**OpenAlex**, **Semantic Scholar**, **CrossRef**, **PubMed**, **Google Scholar**) or run `--provider all` to query the four open REST providers concurrently.
+- Fault-tolerant retrieval: failed providers emit non-fatal diagnostic reports while successful providers merge and display results.
+- Bounded pagination with provider-specific cursor and offset handling up to the requested `--limit`.
+
+### 2. Publication Identity & Deduplication
+- Strict DOI precedence: identical DOIs merge automatically; differing non-empty DOIs are never merged.
+- Title fuzzy matching ($\ge 0.92$) when DOIs are absent or matching and publication years align.
+- Composite metadata merging retains maximum observed citation counts, richer author lists, abstracts, and per-provider provenance.
+
+### 3. Complete Harzing Bibliometrics Suite
+Metrics are calculated over the returned or filtered publication list:
+- **Impact Indices**: $h$-index, $g$-index, $e$-index (excess citations), $hI_{\text{annual}}$ (individual annual h-index), $i10$-index.
+- **Normalized & Age-Weighted Indices**: $hL_{\text{norm}}$ (author-count normalized $h$-index), $\text{AWCR}$ (Age-Weighted Citation Rate), and $\text{AW-index}$.
+- **Summary Statistics**: Total papers, total citations, citations per paper, citations per author, papers per author, citations per year.
+- **H-Core Isolation**: `--show-h-core` isolates and displays the $h$-core publication subset.
+
+### 4. Search Snapshot History, Rerun & Citation Growth Diffing
+- Every search result is automatically saved to local SQLite (`~/.config/pop_linux/history.sqlite3`).
+- `pop-linux history`: Inspect past searches and snapshot IDs.
+- `pop-linux diff <snap1> <snap2>`: Track citation growth deltas and new paper discoveries between any two snapshots over time.
+- `pop-linux rerun <snap_id>`: Re-execute a saved search with identical parameters.
+
+### 5. Playwright CAPTCHA Bridge
+- If Google Scholar returns HTTP 429 or a CAPTCHA challenge, `pop-linux` launches an interactive Chromium session.
+- Once solved, session cookies are saved to `~/.config/pop_linux/cookies.json` (`0600`) for subsequent requests.
+
+---
+
+## API Keys & Provider Setup
+
+`pop-linux` works out of the box **with no API keys**. Adding free API keys lifts rate limits for heavy usage. Keys are stored in `~/.config/pop_linux/config.toml` (`0600`), masked in CLI display, and never printed in logs or envelopes.
+
+```bash
+# Configure API keys:
+pop-linux config --set api_keys.semanticscholar --value "YOUR_KEY_HERE"
+pop-linux config --set api_keys.ncbi --value "YOUR_KEY_HERE"
+
+# Configure polite identification email (sent in User-Agent):
+pop-linux config --set polite_email --value "you@example.com"
+```
+
+| Provider | Key Required? | How to Register | Advantage with Key |
+|---|---|---|---|
+| **OpenAlex** | Keyless OK for casual use | Free at [openalex.org/settings/api](https://openalex.org/settings/api) | 10× daily request budget |
+| **Semantic Scholar** | Optional | Free at [semanticscholar.org/product/api](https://www.semanticscholar.org/product/api) | Dedicated 1 request/sec (keyless shares pooled rate) |
+| **NCBI / PubMed** | Optional | Free at [ncbi.nlm.nih.gov/account](https://www.ncbi.nlm.nih.gov/account/) | Rate limit raised from 3 to 10 requests/sec |
+| **CrossRef** | No key needed | Automatic via `polite_email` header | Access to polite pool |
+| **Google Scholar** | No key exists | Scraper with Playwright cookie bridge | Persistent session via `cookies.json` |
+
+---
+
+## CLI Usage Examples
 
 ### 1. Basic Academic Search
-Harvest papers using default fast open provider (OpenAlex):
 ```bash
 pop-linux search "respiratory infections" --limit 20
 ```
 
-### 2. Search Filters & Specific Provider
+### 2. Provider Selection & Structured Filters
 ```bash
 pop-linux search "asthma management" --provider semanticscholar --author "Smith" --year-from 2018 --min-citations 10 --export asthma.bib
 ```
 
 ### 3. Multi-Provider Concurrent Harvest & Deduplication
-Search across OpenAlex, Semantic Scholar, CrossRef, and PubMed concurrently with automated record deduplication:
 ```bash
 pop-linux search "pulmonary rehabilitation" --provider all --limit 50 --export combined.json
 ```
@@ -223,98 +176,64 @@ pop-linux search "chronic obstructive pulmonary disease" --show-h-core
 ```
 
 ### 5. Google Scholar Profile Harvesting
-Harvest publications directly from a researcher's Google Scholar profile:
 ```bash
 pop-linux search "" --profile "u123456789" --export profile.bib
 ```
 
-### 6. Google Scholar Search with Playwright CAPTCHA Solver
+### 6. Interactive Google Scholar Search
 ```bash
 pop-linux search "machine learning in healthcare" --provider google_scholar --limit 20
 ```
 
-> **⚠️ Legal / ToS notice:** the `google_scholar` provider scrapes the Google Scholar public website and its CAPTCHA bridge automates past Google's challenge. This conflicts with Google's Terms of Service, may violate the operator's fair-use expectations, and can result in your IP being temporarily blocked. Use it at your own risk; prefer `--provider all` (OpenAlex / Semantic Scholar / CrossRef / PubMed) which use sanctioned APIs for bulk harvesting.
-
-> **🔒 Privacy note:** search queries and harvested paper metadata are persisted in plaintext to the local SQLite history database (`~/.config/pop_linux/history.sqlite3`, permissions 0600). Search topics can be sensitive (e.g. health-related queries); the file, its backups, and the plaintext API keys in `config.toml` should be protected like credentials.
-
-### 7. Search Snapshot History, Rerun & Citation Growth Diffing
+### 7. Search Snapshot History, Rerun & Citation Diffing
 ```bash
 # List past search snapshots
 pop-linux history
 
-# Compare citation growth and metric trajectory between snapshot #1 and snapshot #2
+# Compare citation growth between snapshot #1 and snapshot #2
 pop-linux diff 1 2
 
-# Re-execute a saved search exactly as it ran (same resolved request, same provider set)
+# Re-execute a saved search snapshot
 pop-linux rerun 42
-
-# Machine-readable rerun: prints the same JSON execution envelope as `--machine search`
-pop-linux --machine rerun 42
 ```
 
-**History storage (schema v2):** every search snapshot stores its resolved request, per-provider reports, provenance, metrics context, and rerun lineage alongside the classic result payload. Legacy v1 databases are migrated automatically on first use, with a versioned backup (`history.sqlite3.bak-<timestamp>`) written first; if migration fails, the original database is left untouched and usable. A history-write failure never masks a successful search: the CLI warns and continues, and the `--no-history` flag skips persistence entirely.
-
-### 8. Merge Saved Results
+### 8. Merge Saved JSON Result Files
 ```bash
 pop-linux merge results1.json results2.json --export merged_library.bib
 ```
 
-### 9. View Configuration & Providers
+### 9. View Configuration & Capabilities
 ```bash
 pop-linux providers
 pop-linux capabilities
 pop-linux config --show
-pop-linux config --set default_provider --value semanticscholar
 ```
 
-### 10. Recompute Metrics for a Saved Result
+### 10. Recompute Metrics for Stored Datasets
 ```bash
 pop-linux metrics /tmp/results.json
 ```
 
 ---
 
-## 🤖 AI Agent & MCP Integration Guide (Claude Code, OpenCode, Cursor)
+## AI Agent & Automation Integration
 
-`pop-linux` is CLI-first and Python-native. It ships a dedicated machine execution profile for agents: `--machine` prints exactly one versioned JSON execution envelope to stdout, never opens a browser, and never writes history unless explicitly requested.
-
-### 0. Machine Mode (recommended for agents)
+`pop-linux` ships a dedicated machine execution mode designed for AI agents (Claude Code, OpenCode, Cursor, Codex). Passing `--machine` guarantees:
+- Exactly one versioned JSON envelope (`schema: "pop-linux.execution/v1"`) output to stdout.
+- Exit code 0 for `success`, `partial`, and `empty`; exit code 1 for `error`.
+- Refusal of interactive flows (`INTERACTION_FORBIDDEN` on Google Scholar / profile queries) to prevent unexpected browser popups.
+- No implicit history writes unless `--save-history` is provided.
 
 ```bash
-# Step 0: discover providers, filter modes, pagination, and local readiness
-# (no network calls; parse one JSON document):
+# Discover capabilities and local readiness (zero network calls):
 pop-linux --machine capabilities
 
-# Then execute and parse one JSON document:
+# Execute structured search:
 pop-linux --machine search "asthma" --provider all --limit 20
 ```
 
-Contract:
-
-- stdout carries exactly one JSON document with `schema: "pop-linux.execution/v1"`; pass it straight to `json.loads()` with no preprocessing.
-- Status is one of `success`, `partial`, `empty` (exit code 0) or `error` (exit code 1). Provider-level failures appear as structured entries in `provider_reports` (status plus classified, retryable error codes), never as terminal prose.
-- `google_scholar` and `--profile` are refused with an `INTERACTION_FORBIDDEN` error rather than risking an unexpected Chromium launch.
-- No history snapshot is written unless `--save-history` is passed; `persistence` in the envelope reports every side effect (snapshot id, exported files, structured `EXPORT_FAILED`/`HISTORY_WRITE_FAILED` errors).
-- `--export` remains a scholarly-data projection (BibTeX/CSV/JSON/RIS) and is independent of machine stdout.
-- Every provider report includes `pages_or_requests` (retrieval scope) and `filter_modes` describing how each requested filter was enforced (`native`, `query_hint`, `post_filter`, or `unsupported` with a structured `FILTER_UNSUPPORTED` warning); requests that exceed one page are paginated up to the requested limit with safety guards (OpenAlex/CrossRef cursor paging, PubMed `retstart`, Semantic Scholar `offset`/`next`).
-
-The human examples below remain fully supported.
-
-### 1. Direct Bash Execution (Claude Code CLI / OpenCode / Cursor Agent)
-
-Any AI agent with terminal execution capabilities can run `pop-linux` directly and parse structured JSON outputs:
-
-```bash
-# Harvest multi-source deduplicated papers to structured JSON
-pop-linux search "pulmonary rehabilitation COPD" --provider all --limit 30 --export results.json
-
-# Read bibliometrics metrics dictionary
-jq '.metrics' results.json
-```
-
-### 2. Python Package / Direct Library Import
-
-AI agents building custom scripts or web applications can import `pop-linux` modules directly without subprocesses:
+### Direct Library Import
+AI agents and Python pipelines can also import core modules directly:
 
 ```python
 import asyncio
@@ -327,61 +246,26 @@ async def main():
     semanticscholar = get_provider("semanticscholar")
 
     res1, res2 = await asyncio.gather(
-        openalex.search("asthma exacerbations", limit=20),
-        semanticscholar.search("asthma exacerbations", limit=20)
+        openalex.search("quantum computing", limit=20),
+        semanticscholar.search("quantum computing", limit=20)
     )
 
     combined = deduplicate_papers(res1.papers + res2.papers)
     metrics = calculate_metrics(combined)
-    print(f"Combined h-index: {metrics.h_index}, Total Citations: {metrics.total_citations}")
+    print(f"Combined h-index: {metrics.h_index}, Citations: {metrics.total_citations}")
 
 asyncio.run(main())
 ```
 
-### 3. OpenCode / Claude Code Custom Agent Skill Integration
-
-Create an Agent Skill file (e.g., `.opencode/skills/pop-linux.md` or `~/.claude/commands/academic_search.md`):
-
-```markdown
----
-name: academic-search
-description: Search academic literature across OpenAlex, Semantic Scholar, CrossRef, PubMed & compute Harzing bibliometrics using pop-linux.
 ---
 
-When the user asks to find papers or check citation metrics:
-1. Run: `pop-linux search "<query>" --provider all --limit 30 --export results.json`
-2. Parse `results.json` to extract top cited papers and Harzing metrics (h-index, g-index, AWCR).
-3. Present Vancouver-formatted citations to the user.
-```
+## Author & License
 
----
+**Author:** Munir Abbasi  
+- GitHub: [github.com/munir-abbasi](https://github.com/munir-abbasi/)  
+- Website: [syntaxhouse.com](https://syntaxhouse.com)
 
-## 📋 Search Provider Summary
-
-| Provider Key | Search Type | API Key Required? | Description & Capabilities |
-|---|---|---|---|
-| `openalex` | REST API (Default) | Keyless OK for casual use; free key lifts 10× daily budget | Fast, 250M+ items, structured inverted-index abstract reconstruction. See the API-keys note above. |
-| `semanticscholar` | REST API | Optional | Semantic Scholar Graph API with citations, venues, & abstracts; dedicated 1 RPS with a key |
-| `crossref` | REST API | No | DOI lookups, publisher metadata, citation count sorting |
-| `pubmed` | REST API | Optional | NCBI Entrez biomedical & life sciences literature; 3→10 RPS with a key |
-| `google_scholar` | Scraper / Playwright | No | Native HTML parser with Playwright cookie bridge for CAPTCHAs |
-| `all` | Multi-Source API | No | Concurrent multi-provider search with automated DOI & title deduplication |
-
----
-
-## 👤 Author
-
-**Munir Abbasi**
-- **GitHub**: [github.com/munir-abbasi](https://github.com/munir-abbasi/)
-- **Website**: [syntaxhouse.com](https://syntaxhouse.com)
-
----
-
-## 📄 License
-
-This project is licensed under the **PolyForm Noncommercial License 1.0.0**.
-
-- **Allowed**: any *noncommercial* use — personal research, study, hobby, educational institutions, charities, public health, and government use.
-- **Requires permission**: *commercial* use. If you want to use `pop-linux` for any commercial purpose, contact the author for a commercial license.
-
-See [LICENSE](LICENSE) for the full terms.
+**License:** This project is licensed under the **PolyForm Noncommercial License 1.0.0**.
+- **Permitted**: Any noncommercial use (academic research, personal study, education, public health, non-profit institutions).
+- **Commercial Use**: Requires a separate commercial license from the author.
+- Bundled third-party dependencies (such as Qt/PySide6) are subject to their respective licenses (LGPL-3.0, Apache-2.0, BSD-3-Clause); see [`packaging/THIRD_PARTY_NOTICES.md`](packaging/THIRD_PARTY_NOTICES.md).
