@@ -2,37 +2,49 @@
 
 `pop-linux` is an independent, native academic literature search and bibliometric analysis suite for Linux, Windows, and macOS. It provides multi-source paper harvesting, Harzing bibliometric calculations ($h$, $g$, $e$, $hI_{\text{annual}}$, $hL_{\text{norm}}$, $\text{AWCR}$, $\text{AW-index}$, $i10$), automated DOI and fuzzy-title deduplication, SQLite citation trajectory diffing, a Playwright browser bridge for Google Scholar challenge handling, an optional PySide6 desktop workspace, and a deterministic machine execution envelope (`pop-linux.execution/v1`) for AI agents.
 
+Both the PySide6 desktop GUI and the Python CLI are verified, tested, and distributed as standalone, cross-platform packages that require no Python environment or technical configuration.
+
 ---
 
-## Native Desktop Releases (v0.2.0)
+## Key Capabilities Verified for Scholarly Research
 
-Native, standalone desktop packages are available for download from [GitHub Releases](https://github.com/munir-abbasi/pop-linux/releases/tag/v0.2.0). Native packages bundle Python and Qt dependencies; **no Python installation is required**.
+| Researcher Need | How pop-linux Fulfills It | Verification Status |
+| :--- | :--- | :--- |
+| **Broad Literature Search** | Concurrent queries across OpenAlex, Semantic Scholar, CrossRef, PubMed, and Google Scholar. | Verified — full multi-provider coverage and query forms active. |
+| **Bibliometric Analysis** | Calculates Harzing's classic metrics: $h$-index, $g$-index, $e$-index, $hI_{\text{annual}}$, $hL_{\text{norm}}$, $\text{AWCR}$, $\text{AW-index}$, $i10$, and annual citation rates. | Verified — exact mathematical parity with Harzing definitions validated by automated tests. |
+| **De-duplication** | Merges duplicate records from multiple databases using strict normalized DOI matching and high-confidence title similarity, combining citation counts accurately. | Verified — preserves distinct DOIs; prevents false merges. |
+| **Reference Manager Integration** | Direct export of all or selected papers to BibTeX, RIS (Zotero, Mendeley, EndNote), CSV (Excel/R), and JSON. | Verified — CSV formula injection protection active; BibTeX/RIS formatting valid. |
+| **Research Tracking & Velocity** | Snapshots search queries locally to a secure SQLite database (`~/.config/pop_linux/history.sqlite3`), allowing researchers to rerun searches and diff citation growth over time. | Verified — schema migrations tested, query lineage preserved. |
+| **Privacy & Security** | Local-first: no third-party telemetry, tracking, or cloud servers. All search history and API keys stay on the researcher's local machine with strict permissions (`0600`/`0700`). | Verified — Bandit static security analysis clean; masked API credentials. |
 
-| Platform | Architecture | Package Format | Details |
-|---|---|---|---|
-| **Linux** | `x86_64` | `.AppImage`, `.deb`, `.rpm`, `.tar.gz` | Built on Ubuntu 22.04 (`glibc >= 2.35`). Includes desktop integration and icons. |
-| **Windows** | `x64` | `.zip` | Portable archive; extract and run `PerishOrPublish.exe`. |
-| **macOS** | Apple Silicon (`arm64`) | `.zip` | Standalone `PerishOrPublish.app` for M1/M2/M3/M4 Macs. |
-| **macOS** | Intel (`x86_64`) | `.zip` | Standalone `PerishOrPublish.app` for legacy Intel Macs. |
+---
 
-Every release includes cryptographic checksums in `SHA256SUMS`, startup verification logs, and headless smoke-test evidence.
+## Where Researchers Can Get It
 
-### Running the Native Packages
-- **Linux AppImage**:
-  ```bash
-  chmod +x pop-linux-0.2.0-linux-x86_64.AppImage
-  ./pop-linux-0.2.0-linux-x86_64.AppImage
-  # Systems without FUSE:
-  APPIMAGE_EXTRACT_AND_RUN=1 ./pop-linux-0.2.0-linux-x86_64.AppImage
-  ```
-- **Linux Deb / RPM**:
-  ```bash
-  # Debian / Ubuntu / Mint:
-  sudo apt install ./pop-linux-0.2.0-linux-x86_64.deb
-  # Fedora / RHEL:
-  sudo dnf install ./pop-linux-0.2.0-linux-x86_64.rpm
-  ```
-- **Windows / macOS**: Extract the ZIP archive and open the application.
+The release is live on GitHub: **[Release v0.2.0](https://github.com/munir-abbasi/pop-linux/releases/tag/v0.2.0)**
+
+| Platform | Architecture | Package | How to Run |
+| :--- | :--- | :--- | :--- |
+| **Linux** | `x86_64` | AppImage | `chmod +x pop-linux-0.2.0-x86_64.AppImage && ./pop-linux-0.2.0-x86_64.AppImage`<br>*(No FUSE: `APPIMAGE_EXTRACT_AND_RUN=1 ./pop-linux-0.2.0-x86_64.AppImage`)* |
+| **Linux** | `x86_64` | `.deb` (Debian/Ubuntu) | `sudo dpkg -i pop-linux_0.2.0_amd64.deb` |
+| **Linux** | `x86_64` | `.rpm` (Fedora/RHEL) | `sudo rpm -i pop-linux-0.2.0-1.x86_64.rpm` |
+| **Windows** | `x64` | `.zip` | Extract zip, double-click `PerishOrPublish.exe` |
+| **macOS** | Apple Silicon (`arm64`) | `.zip` | Extract zip, open `PerishOrPublish.app` |
+| **macOS** | Intel (`x86_64`) | `.zip` | Extract zip, open `PerishOrPublish.app` |
+| **Python Developers** | Any | Source package / wheel | `pip install 'pop-linux[desktop]'` |
+
+Every release includes cryptographic checksums in `SHA256SUMS`.
+
+### Practical Operating Notes for Researchers
+
+1. **First-Launch OS Warnings (Standard for Independent Open Source):**
+   - **Windows:** SmartScreen will display an "Unknown Publisher" warning. Click **More info** → **Run anyway**.
+   - **macOS:** Gatekeeper may block launch on first double-click. **Right-click (Control-click)** the app → select **Open** → click **Open**.
+2. **API Keys (Optional but Recommended for Heavy Queries):**
+   - The app functions immediately without any API keys.
+   - For high-volume harvesting (e.g., systematic literature reviews), researchers can enter free API keys for OpenAlex, Semantic Scholar, or NCBI PubMed via the desktop Settings dialog to bypass default rate-limiting.
+3. **Google Scholar Queries:**
+   - Automated queries to Google Scholar may periodically prompt a CAPTCHA. If triggered, pop-linux invokes a local browser window allowing the user to solve the verification once, after which cookies are cached locally for subsequent queries.
 
 ---
 
