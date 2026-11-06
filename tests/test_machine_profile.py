@@ -258,9 +258,13 @@ def test_machine_export_failure_reported_not_fatal(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "save_snapshot", lambda *a, **k: 1)
     _patch_registry(monkeypatch, {"openalex": _provider("openalex", _qr([_paper()]))})
 
+    blocked = tmp_path / "not_a_directory"
+    blocked.write_text("file")
+    unwritable_path = str(blocked / "sub" / "out.json")
+
     res = runner.invoke(
         app,
-        ["--machine", "search", "q", "--provider", "openalex", "--export", "/proc/nonexistent-dir/out.json"],
+        ["--machine", "search", "q", "--provider", "openalex", "--export", unwritable_path],
     )
     data = _parse_envelope(res)
     assert data["status"] == "success"  # retrieval result preserved

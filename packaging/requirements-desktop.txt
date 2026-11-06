@@ -2,7 +2,8 @@
 # This set requires validation on native runners; it is not a verified lockfile.
 setuptools==77.0.3
 wheel==0.45.1
-pyinstaller==6.16.0
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.9
 PySide6==6.11.2
 pytest==8.3.5
 pytest-asyncio==0.25.3

@@ -10,9 +10,10 @@ data = [(str(root / "LICENSE"), "."), (str(root / "packaging/THIRD_PARTY_NOTICES
         (str(root / "build/desktop-notices"), "third-party-notices")]
 data += copy_metadata("pop-linux") + playwright_data
 data.append((str(root / "pop_linux/gui/resources/pop-linux.svg"), "pop_linux/gui/resources"))
+hiddenimports = playwright_hidden + ["backports", "backports.tarfile"]
 analysis = Analysis(
     [str(root / "packaging/desktop_entry.py")], pathex=[str(root)],
-    binaries=playwright_binaries, datas=data, hiddenimports=playwright_hidden,
+    binaries=playwright_binaries, datas=data, hiddenimports=hiddenimports,
     excludes=["tkinter", "PyQt5", "PyQt6", "PySide2"], noarchive=False,
 )
 pyz = PYZ(analysis.pure)
