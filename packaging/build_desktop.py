@@ -50,11 +50,17 @@ def collect_notices():
     if len(set(qt_versions.values())) != 1:
         raise RuntimeError(f"Qt for Python component versions differ: {qt_versions}")
     source = ROOT / "packaging" / "licenses" / "pyside6"
+    qt_target = target / "qt-for-python"
+    qt_target.mkdir(parents=True, exist_ok=True)
     for name, expected in PYSIDE_LICENSE_HASHES.items():
         path = source / name
-        if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+        if not path.is_file():
+            raise RuntimeError(f"Missing Qt for Python license text: {name}")
+        normalized = path.read_bytes().replace(b"\r\n", b"\n")
+        if hashlib.sha256(normalized).hexdigest() != expected:
             raise RuntimeError(f"Missing or changed Qt for Python license text: {name}")
-    shutil.copytree(source, target / "qt-for-python", dirs_exist_ok=True)
+        (qt_target / name).write_bytes(normalized)
+    shutil.copytree(source, qt_target, dirs_exist_ok=True)
     (target / "qt-for-python" / "distribution-metadata.json").write_text(
         json.dumps({"components": qt_versions, "licensing": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
                     "license_text_source": "Fedora python3-pyside6-6.11.2-1.fc44.x86_64"}, indent=2),
