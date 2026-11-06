@@ -25,9 +25,7 @@ def run(arguments, **kwargs):
     subprocess.run([str(argument) for argument in arguments], cwd=ROOT, check=True, **kwargs)
 
 
-def collect_notices():
-    target = ROOT / "build" / "desktop-notices"
-    target.mkdir(parents=True, exist_ok=True)
+def _collect_distribution_licenses(target: Path) -> dict[str, str]:
     packages = {}
     for distribution in metadata.distributions():
         name = distribution.metadata["Name"]
@@ -40,6 +38,10 @@ def collect_notices():
                 destination = target / name / str(relative).replace("../", "_")
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source, destination)
+    return packages
+
+
+def _collect_qt_licenses(target: Path):
     qt_versions = {}
     for name in PYSIDE_DISTRIBUTIONS:
         distribution = metadata.distribution(name)
@@ -66,6 +68,13 @@ def collect_notices():
                     "license_text_source": "Fedora python3-pyside6-6.11.2-1.fc44.x86_64"}, indent=2),
         encoding="utf-8",
     )
+
+
+def collect_notices():
+    target = ROOT / "build" / "desktop-notices"
+    target.mkdir(parents=True, exist_ok=True)
+    packages = _collect_distribution_licenses(target)
+    _collect_qt_licenses(target)
     (target / "installed-versions.json").write_text(json.dumps(packages, indent=2), encoding="utf-8")
 
 
