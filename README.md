@@ -1,4 +1,33 @@
-# Perish or Publish Linux (`pop-linux`)
+# Perish or Publish (`pop-linux`)
+
+## Desktop workspace — 0.2.0 release candidate
+
+An optional Python/PySide6 desktop layer adds provider-aware searches, sortable
+and locally filtered publication tables, details and provenance, bibliometric
+cards, selected/full exports, history comparisons, JSON merging and masked
+settings. It reuses the existing engine and preserves the CLI.
+
+```bash
+python -m pip install '.[desktop]'
+pop-linux-gui
+# Or launch directly:
+python -m pop_linux.gui
+```
+
+The source GUI has been started and tested locally on Linux with Qt 6.11.2;
+the complete regression/GUI suite passed 240 tests. Native packages, Windows
+and macOS startup, and GitHub Releases remain unverified. The prepared native
+build workflow must pass before those platforms are claimed as supported.
+There are no native desktop release assets produced by this checkout yet.
+
+See the [desktop guide](docs/desktop.md), [repository audit](docs/desktop-audit.md)
+and [release candidate limitations](docs/release-0.2.0.md). Installation from a
+verified native package will not require Python; source installation does.
+The PolyForm Noncommercial License 1.0.0 is unchanged; Qt has separate license
+obligations. Desktop snapshots are saved explicitly. Linux configuration and
+research history remain in their existing locations.
+
+The following sections document the original CLI workflow.
 
 `pop-linux` (**Perish or Publish Linux**) is a native Python CLI application for Linux. It provides multi-source academic paper harvesting, bibliometric calculations ($h$, $g$, $e$, $hI_{\text{annual}}$, $hL_{\text{norm}}$, $\text{AWCR}$, $\text{AW-index}$, $i10$), multi-provider data deduplication, SQLite search snapshot tracking, and a Playwright browser bridge for interactive Google Scholar challenge handling.
 

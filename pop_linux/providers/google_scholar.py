@@ -157,6 +157,24 @@ class GoogleScholarProvider(BaseProvider):
 
     async def _fetch_native(self, request: SearchRequest) -> ProviderFetchResult:
         """Google Scholar HTML search (migrated to the engine fetch contract)."""
+        if request.profile_id:
+            result = await self.search_profile(
+                request.profile_id, limit=request.limit,
+                **request.filters.model_dump(exclude_none=True),
+            )
+            return ProviderFetchResult(
+                papers=result.papers, returned_count=len(result.papers),
+                elapsed_seconds=result.search_time_seconds,
+                warnings=[ExecutionMessage(
+                    code="PROFILE_FETCH_COUNTS_UNKNOWN",
+                    message="Legacy profile retrieval does not report fetched counts or request counts.",
+                    provider=self.name,
+                )],
+            )
+        return await self._fetch_query(request)
+
+    async def _fetch_query(self, request: SearchRequest) -> ProviderFetchResult:
+        """Query retrieval, separate from profile dispatch and projection."""
         start_time = time.time()
         author = request.filters.author
         journal = request.filters.journal
