@@ -93,6 +93,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
+          mkdir -p build/test-artifacts build/gui-artifacts
           python -m pytest -q --basetemp=build/test-artifacts --junitxml=build/test-results.xml
           python -m pytest tests/test_gui.py -q --basetemp=build/gui-artifacts
       - name: Build and start native packages on Linux
