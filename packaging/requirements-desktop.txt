@@ -1,0 +1,17 @@
+# Controlled direct build/test dependencies. CI records the full resolved graph.
+# This set requires validation on native runners; it is not a verified lockfile.
+setuptools==77.0.3
+wheel==0.45.1
+pyinstaller==6.16.0
+PySide6==6.11.2
+pytest==8.3.5
+pytest-asyncio==0.25.3
+ruff==0.11.2
+bandit==1.8.3
+typer==0.15.2
+rich==13.9.4
+pydantic==2.13.4
+httpx==0.28.1
+beautifulsoup4==4.13.3
+playwright==1.51.0
+tomli-w==1.2.0

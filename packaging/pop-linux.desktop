@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Perish or Publish
+Comment=Scholarly search and bibliometric research workspace
+Exec=pop-linux-gui
+Icon=pop-linux
+Terminal=false
+Categories=Education;Science;
+StartupNotify=true
