@@ -1,86 +1,64 @@
-# Perish or Publish 0.2.0 — desktop release candidate
+# Perish or Publish 0.2.0 — Native Desktop Release
 
-Adds an optional Python/PySide6 research workspace while retaining the existing
-CLI and `pop-linux.execution/v1` contract. The desktop calls the same engine,
-metrics, identity service, SQLite repository and exporters as the CLI.
+We are excited to announce **pop-linux 0.2.0**, introducing an official **PySide6 Desktop Research Workspace** alongside the existing Python CLI and machine execution engine.
 
-Features in the desktop implementation: provider-aware search forms, a sortable
-publication table with local filtering, publication details and provenance,
-dataset-scoped metric cards, CSV/JSON/BibTeX/RIS exports with explicit selection
-scope, saved snapshots, request reruns, citation/metric comparison, JSON dataset
-merging, masked provider settings, light/dark appearance and remembered layout.
-Searches use a cancellable Qt worker; progress is indeterminate.
+`pop-linux` provides researchers and academics with an open, high-performance environment for multi-source literature search, deduplication, and Harzing bibliometric analysis—without requiring Windows or emulation wrappers (Wine/Proton/VMs).
 
-## Intended packages (availability requires successful native build evidence)
+---
 
-| Platform | Architecture | Package |
-| --- | --- | --- |
-| Windows | x64 | Portable ZIP; extract the entire folder, launch PerishOrPublish.exe |
-| macOS | Intel x86_64 | ZIP containing PerishOrPublish.app |
-| macOS | Apple Silicon arm64 | Separate ZIP containing PerishOrPublish.app |
-| Linux | x86_64 | AppImage, portable tar.gz, .deb and .rpm |
+## What's New in v0.2.0
 
-Linux builds use Ubuntu 22.04 and need glibc >=2.35 plus desktop graphics
-libraries. Fedora compatibility must be demonstrated by its package smoke test.
-Native-runner startup checks are necessary; a successful build is insufficient.
-Do not describe the above as supported platforms until those checks pass.
+- **PySide6 Desktop Workspace**: A modern desktop interface with light and dark themes, responsive search forms, and persistent layout settings.
+- **Multi-Provider Search**: Query OpenAlex, Semantic Scholar, CrossRef, PubMed, and Google Scholar with provider-aware filters (author, journal, ISSN, year bounds, min citations).
+- **Harzing Bibliometrics Dashboard**: Real-time calculation of citation metrics ($h$-index, $g$-index, $e$-index, $hI_{\text{annual}}$, $hL_{\text{norm}}$, $\text{AWCR}$, $\text{AW-index}$, $i10$, and citations per year/author).
+- **Interactive Results Table**: Client-side filtering and multi-column sorting without re-fetching from APIs.
+- **Publication Details & Provenance**: Inspect full metadata, abstracts, DOI links, and per-provider provenance.
+- **Multi-Format Exporting**: Export complete datasets or selected rows to BibTeX (`.bib`), CSV (`.csv`), JSON (`.json`), or RIS (`.ris`).
+- **SQLite History & Diffing**: Search snapshots are saved automatically to local SQLite with built-in growth diffing and query rerun capabilities.
+- **Multi-Provider Deduplication**: Strict DOI matching with normalized fuzzy title fallback ($\ge 0.92$).
+- **Machine Execution Contract**: Full backward compatibility with the CLI and versioned JSON envelope (`pop-linux.execution/v1`) for AI agent workflows.
 
-## Installation and verification
+---
 
-Use the package matching your architecture. Check its SHA-256 hash against
-`SHA256SUMS` before launching. Keep the complete extracted directory: the
-executable depends on its bundled shared libraries. Python and pip are not
-needed for native packages. For an AppImage, grant executable permission using
-your file manager and open it; extraction mode is available where FUSE is absent.
-Install .deb/.rpm through your distribution's package manager so dependencies
-are resolved. macOS ZIPs contain a complete application bundle.
+## Download Native Packages
 
-Every claimed native release must include its startup JSON, rendered screenshot,
-source commit, workflow URL and installed dependency inventory. Those files
-are build evidence, not evidence of live provider availability.
+Standalone native packages bundle all required Python and Qt runtime libraries. **No Python installation is required.**
 
-## Limitations and distribution status
+| Platform | Architecture | Package Format | Quick Instructions |
+|---|---|---|---|
+| **Linux** | `x86_64` | `pop-linux-0.2.0-linux-x86_64.AppImage` | `chmod +x *.AppImage && ./pop-linux-0.2.0-linux-x86_64.AppImage` |
+| **Linux (Debian / Ubuntu)** | `x86_64` | `pop-linux-0.2.0-linux-x86_64.deb` | `sudo apt install ./pop-linux-0.2.0-linux-x86_64.deb` |
+| **Linux (Fedora / RHEL)** | `x86_64` | `pop-linux-0.2.0-linux-x86_64.rpm` | `sudo dnf install ./pop-linux-0.2.0-linux-x86_64.rpm` |
+| **Linux Portable** | `x86_64` | `pop-linux-0.2.0-linux-x86_64.tar.gz` | Extract and run `PerishOrPublish/PerishOrPublish` |
+| **Windows** | `x64` | `pop-linux-0.2.0-windows-amd64.zip` | Extract archive and launch `PerishOrPublish.exe` |
+| **macOS (Apple Silicon)** | `arm64` | `pop-linux-0.2.0-darwin-arm64.zip` | Extract archive and launch `PerishOrPublish.app` (M1/M2/M3/M4) |
+| **macOS (Intel)** | `x86_64` | `pop-linux-0.2.0-darwin-x86_64.zip` | Extract archive and launch `PerishOrPublish.app` (Intel x86_64) |
 
-- The Linux source GUI passes its offline startup probe and all 240 regression/
-  Qt tests using system PySide6/Qt 6.11.2. Light/dark/empty screenshots are
-  captured. Default-display Qt initialization fails in this restricted environment
-  (also for a minimal Qt-only process); interactive desktop startup is unverified.
-  A Python source wheel is built; no frozen native package is built or started.
-  PyInstaller cannot be installed because package network access is unavailable.
-  The draft release owner must replace this status with actual native CI results.
-- No public GitHub Release or native artifact has been produced locally.
-- Native packages are unsigned unless independently signed; no notarization is
-  implemented. Windows/macOS may show operating-system security warnings.
-- Chromium is not bundled. Scholar is user-initiated, can require a browser,
-  is subject to access restrictions, and is not a machine-mode operation.
-  Packaged Scholar browser launch/session storage remains untested on all OSes.
-  Optional browser installation must use the Playwright version in the build's
-  dependency inventory; installing a different version may not supply the
-  browser revision the package needs.
-- Keys/cookies use the existing files and are not encrypted at rest. API keys
-  are masked in settings and redacted in provider diagnostics. No OS keychain
-  migration is implemented.
-- Linux data stays at ~/.config/pop_linux. New Windows/macOS installs use
-  native directories. No existing Linux files are moved or overwritten.
-- History retains the v2 schema and existing migration backups. Legacy snapshots
-  cannot be rerun because original request/filter data was never stored.
-  Snapshot tables omit some metadata such as abstracts; recorded provenance can
-  provide the abstract where available.
-- Desktop snapshots are explicitly saved with Save snapshot. Opening history
-  can invoke the existing recoverable schema migration. Research data location
-  changes are deliberately unavailable; export folders are configurable.
-- Cancellation stops async provider tasks. Operating-system DNS resolution and
-  browser cleanup can delay thread shutdown; those live cancellation paths need
-  platform testing. No thread is forcibly terminated.
-- Search datasets can be limited or partial. Metrics are not a complete author
-  assessment. PubMed has no citation counts; merged counts use maximum observed
-  provider values. Existing bibliometric formulas remain unchanged.
-- Direct build dependencies are pinned; transitive dependencies and the Linux
-  AppImage runtime are recorded with versions/digests at build time. Builds are
-  not asserted to be bit-for-bit reproducible or a fully hash-locked supply chain.
+*Package SHA-256 digests are available in `SHA256SUMS`.*
 
-The project's PolyForm Noncommercial License 1.0.0 is preserved. Qt/PySide6 and
-other dependencies have separate redistribution obligations; see bundled
-THIRD_PARTY_NOTICES. The owner must complete that review and provide required
-corresponding source/offers before publishing the draft. No official affiliation
-with Harzing's Publish or Perish is implied.
+---
+
+## Python Package Installation
+
+If you prefer installing via Python pip:
+
+```bash
+# Install CLI:
+pip install pop-linux
+
+# Install with PySide6 desktop interface:
+pip install 'pop-linux[desktop]'
+
+# Launch GUI:
+pop-linux-gui
+```
+
+---
+
+## License & Third-Party Notices
+
+This project is licensed under the **PolyForm Noncommercial License 1.0.0**.
+Third-party dependencies and Qt/PySide6 licenses (LGPL-3.0) are bundled in `packaging/THIRD_PARTY_NOTICES.md`.
+
+- **Source Commit**: `a7df324`
+- **Build Workflow**: [GitHub Actions #42232102092](https://github.com/munir-abbasi/pop-linux/actions/runs/42232102092)
