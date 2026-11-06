@@ -6,11 +6,9 @@ and deduplicating papers, computing metrics, and constructing the
 ExecutionEnvelope. Terminal rendering, config parsing, and Typer concerns
 belong to the CLI; provider-specific retrieval belongs to providers.
 
-The engine intentionally consumes the legacy provider `.search()` contract
-during the migration window (implementation_plan.md Phase 2): provider
-QueryResult responses are adapted into ProviderReport objects here. Once
-providers migrate to the engine-facing fetch contract (Phase 7), this module
-stops calling `.search()` while the legacy wrappers remain for library users.
+The engine consumes provider.fetch(request). The synchronous CLI entry point
+and cancellable async desktop entry point share aggregation and serialization;
+neither depends on Qt. Legacy provider.search wrappers remain for library users.
 
 Status model (Phase 2 status rules):
 
@@ -218,7 +216,8 @@ def _resolve_filter_modes(provider_name: str, request: SearchRequest):
     for filter_name, value in requested.items():
         if value is None:
             continue
-        mode = caps.filter_modes.get(filter_name, "unsupported")
+        declared_modes = caps.profile_filter_modes if request.profile_id else caps.filter_modes
+        mode = declared_modes.get(filter_name, "unsupported")
         modes[filter_name] = mode
         if mode == "unsupported":
             warnings.append(
@@ -399,13 +398,22 @@ def execute_request(request: SearchRequest) -> ExecutionEnvelope:
     envelope here keeps renderers and persistence from reconstructing execution
     state independently.
     """
+    return asyncio.run(execute_request_async(request))
+
+
+async def execute_request_async(request: SearchRequest) -> ExecutionEnvelope:
+    """Async engine entry for desktop workers; cancellation propagates to providers.
+
+    Shares all aggregation, identity, provenance and metric behavior with the
+    synchronous public entry point. No Qt dependency or persistence side effect.
+    """
     started = time.time()
     try:
         providers = resolve_providers(request)
     except ValueError as exc:
         raise ValueError(str(exc)) from exc
 
-    reports, raw_papers, papers_by_provider = asyncio.run(_execute_providers(providers, request))
+    reports, raw_papers, papers_by_provider = await _execute_providers(providers, request)
 
     merged, returned_raw = _merge_and_deduplicate(raw_papers)
     now = datetime.now(timezone.utc)

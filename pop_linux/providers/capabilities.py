@@ -47,6 +47,8 @@ class ProviderCapabilities(BaseModel):
     #: Effective enforcement mode per supported filter. Filters absent from
     #: this map are unsupported for the provider.
     filter_modes: dict[str, FilterMode] = Field(default_factory=dict)
+    #: Profile adapters can enforce different filters from query search.
+    profile_filter_modes: dict[str, FilterMode] = Field(default_factory=dict)
     #: Maximum records retrievable in one request/page under current code.
     one_request_cap: int
     #: Whether the adapter paginates beyond one request today.
@@ -200,6 +202,9 @@ CAPABILITIES: dict[str, ProviderCapabilities] = {
         included_in_all=False,
         filter_modes=_filter_modes(
             author="query_hint", journal="query_hint", issn="unsupported", year="native"
+        ),
+        profile_filter_modes=_filter_modes(
+            author="unsupported", journal="unsupported", issn="unsupported", year="post_filter"
         ),
         one_request_cap=20,
         pagination=True,

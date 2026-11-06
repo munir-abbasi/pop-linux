@@ -8,7 +8,16 @@ from typing import Any
 
 import tomli_w
 
-CONFIG_DIR = Path.home() / ".config" / "pop_linux"
+def application_directory(platform: str, home: Path, environment: dict[str, str]) -> Path:
+    """Keep Linux state in place; use native directories for new desktop installs."""
+    if platform == "win32":
+        return Path(environment.get("APPDATA") or home / "AppData" / "Roaming") / "pop_linux"
+    if platform == "darwin":
+        return home / "Library" / "Application Support" / "pop_linux"
+    return home / ".config" / "pop_linux"
+
+
+CONFIG_DIR = application_directory(sys.platform, Path.home(), os.environ)
 CONFIG_FILE = CONFIG_DIR / "config.toml"
 COOKIES_FILE = CONFIG_DIR / "cookies.json"
 HISTORY_DB_FILE = CONFIG_DIR / "history.sqlite3"

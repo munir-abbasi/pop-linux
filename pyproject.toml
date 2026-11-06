@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77.0.3,<81"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "pop-linux"
-version = "0.1.0"
-description = "Native Perish or Publish CLI for Linux with multi-source academic API harvesting and Playwright CAPTCHA solver."
+version = "0.2.0"
+description = "Python scholarly search and bibliometrics with a CLI and optional Qt desktop workspace."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "LicenseRef-PolyForm-Noncommercial-1.0.0"
@@ -27,10 +27,13 @@ keywords = [
 ]
 classifiers = [
     "Environment :: Console",
+    "Environment :: X11 Applications :: Qt",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Natural Language :: English",
     "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -52,6 +55,11 @@ dependencies = [
     "tomli-w>=1.0.0,<2.0"
 ]
 
+[project.optional-dependencies]
+desktop = ["PySide6==6.11.2"]
+desktop-test = ["PySide6==6.11.2"]
+desktop-build = ["PySide6==6.11.2", "pyinstaller==6.22.3", "pyinstaller-hooks-contrib==2026.9"]
+
 [project.urls]
 Homepage = "https://github.com/munir-abbasi/pop-linux"
 Repository = "https://github.com/munir-abbasi/pop-linux"
@@ -60,12 +68,18 @@ Repository = "https://github.com/munir-abbasi/pop-linux"
 
 [project.scripts]
 pop-linux = "pop_linux.cli:app"
+pop-linux-gui = "pop_linux.gui.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["pop_linux*"]
+
+[tool.setuptools.package-data]
+"pop_linux.gui" = ["resources/*.svg"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 
 [tool.ruff]
